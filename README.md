@@ -2,11 +2,12 @@
 
 ## Running Locally
 
-Setup your .env file locally to hold the port and the DB connection string
+Setup your .env file at the root folder
 
 ```sh
-$ go build -o new -v
-$ ./new
+$  go build -o gambl
+
+$ ./gambl
 ```
 
-The application should be available and running on [localhost:8000](http://localhost:8000/).
+The application should be available and running on [localhost:4000](http://localhost:4000/).
