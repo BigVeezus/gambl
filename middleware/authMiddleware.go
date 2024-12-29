@@ -43,6 +43,29 @@ func Authentication() gin.HandlerFunc {
 	}
 }
 
+// AdminMiddleware checks if the user_type is "ADMIN"
+func AdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Retrieve user_type from the context set by the Authentication middleware
+		userType, exists := c.Get("user_type")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User type not found"})
+			c.Abort() // Stop further processing
+			return
+		}
+
+		// Check if the user type is "ADMIN"
+		if userType != "ADMIN" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized: Admin access required"})
+			c.Abort() // Stop further processing
+			return
+		}
+
+		// Allow the request to proceed
+		c.Next()
+	}
+}
+
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

@@ -12,44 +12,49 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// DBinstance func
-func DBinstance() *mongo.Client {
+var Client *mongo.Client
+
+// DBinstance initializes and returns a MongoDB client instance
+func DBinstance() (*mongo.Client, error) {
 	err := godotenv.Load(".env")
 	if err != nil {
 		log.Println("Error loading .env file, proceeding with environment variables")
 	}
 
-	// Retrieve the MONGO_URL environment variable, or use a default if not set
+	// Retrieve the MONGO_URL environment variable
 	MongoDb := os.Getenv("MONGODB_URL")
 	if MongoDb == "" {
-		// Use a default value or handle the case where MONGO_URL is not set
-		log.Fatal("MONGO_URL environment variable is not set")
+		return nil, fmt.Errorf("MONGO_URL environment variable is not set")
 	}
 
-	client, err := mongo.NewClient(options.Client().ApplyURI(MongoDb))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
+	// Create a new client and establish a connection
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err = client.Connect(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Connected to MongoDB!")
 
-	return client
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(MongoDb))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
+	}
+
+	// Ping the database to ensure the connection is active
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %v", err)
+	}
+
+	log.Println("Connected to MongoDB!")
+	return client, nil
 }
 
-// Client Database instance
-var Client *mongo.Client = DBinstance()
-
-// OpenCollection is a  function makes a connection with a collection in the database
+// OpenCollection creates a reference to a specific collection
 func OpenCollection(client *mongo.Client, collectionName string) *mongo.Collection {
+	return client.Database("gambl").Collection(collectionName)
+}
 
-	var collection *mongo.Collection = client.Database("gambl").Collection(collectionName)
-
-	return collection
+// Initialize the global Client variable
+func init() {
+	var err error
+	Client, err = DBinstance()
+	if err != nil {
+		log.Fatalf("Could not initialize MongoDB client: %v", err)
+	}
 }
