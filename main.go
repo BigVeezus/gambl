@@ -2,14 +2,19 @@ package main
 
 import (
 	"os"
+	"log"
 
 	userRoutes "gambl/routes/user"
+	gameRoutes "gambl/routes/game"
+	gameController "gambl/controllers/game"
+	gameService "gambl/core/game"
 
 	"github.com/DeanThompson/ginpprof"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	_ "github.com/heroku/x/hmetrics/onload"
+	_"github.com/heroku/x/hmetrics/onload"
 )
+
 
 func main() {
 	port := os.Getenv("PORT")
@@ -17,6 +22,11 @@ func main() {
 	if port == "" {
 		port = "8000"
 	}
+
+	logger := log.New(os.Stdout, "[GAMBL]", log.LstdFlags) 
+	gameService := gameService.NewGameService()
+	gameController := gameController.NewGameController(gameService, logger)
+
 
 	router := gin.New()
 
@@ -39,6 +49,7 @@ func main() {
 
 	// Protected routes under version 1
 	userRoutes.UserRoutes(v1)
+	gameRoutes.SetupGameRoutes(v1, gameController)
 
 	// API-2
 

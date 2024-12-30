@@ -5,6 +5,7 @@ import (
     "context"
     "errors"
     "time"
+    "log"
 )
 
 var (
@@ -19,21 +20,22 @@ var (
 type GameService interface {
     // Game Management
     CreateGame(ctx context.Context, game *Game) error
-    GetGame(ctx context.Context, id string) (*Game, error)
-    ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
+    // GetGame(ctx context.Context, id string) (*Game, error)
+    // ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
     
-    // Stake Operations
-    PlaceStake(ctx context.Context, gameID string, stake *GameStake) error
-    GetStake(ctx context.Context, gameID, stakeID string) (*GameStake, error)
+    // // Stake Operations
+    // PlaceStake(ctx context.Context, gameID string, stake *GameStake) error
+    // GetStake(ctx context.Context, gameID, stakeID string) (*GameStake, error)
+    // GetStakes(ctx context.Context, gameID, filters StakeFilters) ([]GameStake, error)
     
-    // Game Flow
-    StartGame(ctx context.Context, gameID string) error
-    SubmitResult(ctx context.Context, gameID string, result *GameResult) error
-    VerifyResult(ctx context.Context, gameID string, proof *VerificationProof) error
+    // // Game Flow
+    // StartGame(ctx context.Context, gameID string) error
+    // SubmitResult(ctx context.Context, gameID string, result *GameResult) error
+    // VerifyResult(ctx context.Context, gameID string, proof *VerificationProof) error
     
-    // Dispute Handling
-    RaiseDispute(ctx context.Context, gameID string, reason string) error
-    ResolveDispute(ctx context.Context, gameID string, resolution string) error
+    // // Dispute Handling
+    // RaiseDispute(ctx context.Context, gameID string, reason string) error
+    // ResolveDispute(ctx context.Context, gameID string, resolution string) error
 }
 
 // GameFilters for listing games
@@ -41,6 +43,18 @@ type GameFilters struct {
     Status    []GameStatus
     Type      string
     CreatorID string
+    FromDate  time.Time
+    ToDate    time.Time
+    Limit     int
+    Offset    int
+}
+
+type StakeFilters struct {
+    StakeID    []string
+    MinAmount   float64
+    MaxAmount   float64
+    Currency    []string
+    PayoutChannel   []string
     FromDate  time.Time
     ToDate    time.Time
     Limit     int
@@ -56,26 +70,24 @@ type gameService struct {
 }
 
 // NewGameService creates a new game service
-// func NewGameService(repo GameRepository, userSvc UserService, walletSvc WalletService, notifier NotifierService) GameService {
-//     return &gameService{
-//         repo:      repo,
-//         userSvc:   userSvc,
-//         walletSvc: walletSvc,
-//         notifier:  notifier,
-//     }
-// }
+func NewGameService() GameService {
+    log.Printf("Init: create game service")
+    return &gameService{}
+}
 
 // Implementation of CreateGame
-// func (s *gameService) CreateGame(ctx context.Context, game *Game) error {
-//     // Validate game creation parameters
-//     if err := ValidateGameCreation(game); err != nil {
-//         return err
-//     }
+func (s *gameService) CreateGame(ctx context.Context, game *Game) error {
+    log.Printf("Init: create game service")
 
-//     // Set initial game status
-//     game.Status = StatusCreated
-//     game.CreatedAt = time.Now()
-//     game.UpdatedAt = time.Now()
+    // Validate game creation parameters
+    if err := ValidateGameCreation(game); err != nil {
+        return err
+    }
+
+    // Set initial game status
+    game.Status = StatusCreated
+    game.CreatedAt = time.Now()
+    game.UpdatedAt = time.Now()
 
 //     // Store the game
 //     if err := s.repo.Create(ctx, game); err != nil {
@@ -85,8 +97,8 @@ type gameService struct {
 //     // Notify relevant parties
 //     s.notifier.NotifyGameCreated(ctx, game)
     
-//     return nil
-// }
+    return ErrStakeNotAllowed
+}
 
 // Implementation of PlaceStake
 // func (s *gameService) PlaceStake(ctx context.Context, gameID string, stake *GameStake) error {
@@ -105,15 +117,6 @@ type gameService struct {
 //         return err
 //     }
 
-//     // Check for duplicate stakes
-//     if s.hasExistingStake(ctx, gameID, stake.StakerID) {
-//         return ErrDuplicateStake
-//     }
-
-//     // Lock funds in wallet
-//     if err := s.walletSvc.LockFunds(ctx, stake.StakerID, stake.Amount, stake.Currency); err != nil {
-//         return err
-//     }
 
 //     // Add stake to game
 //     game.Stakes = append(game.Stakes, *stake)
@@ -163,31 +166,4 @@ type gameService struct {
 //     }
 
 //     return nil
-// }
-
-// Internal helper method for payout processing
-// func (s *gameService) processPayout(ctx context.Context, game *Game, result *GameResult) error {
-//     for _, winner := range result.Winners {
-//         winningAmount, err := game.CalculateWinnings(winner.StakeID)
-//         if err != nil {
-//             return err
-//         }
-
-//         // Process payout through wallet service
-//         if err := s.walletSvc.ProcessPayout(ctx, winner.PlayerID, winningAmount, game.ID); err != nil {
-//             // Log error and continue with other payouts
-//             s.notifier.NotifyPayoutFailed(ctx, game.ID, winner.PlayerID, err)
-//             continue
-//         }
-
-//         winner.PayoutStatus = PayoutStatusPaid
-//     }
-
-//     return nil
-// }
-
-// Helper method to check for existing stakes
-// func (s *gameService) hasExistingStake(ctx context.Context, gameID, stakerID string) bool {
-//     stakes, _ := s.repo.FindStakesByUser(ctx, gameID, stakerID)
-//     return len(stakes) > 0
 // }
