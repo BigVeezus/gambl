@@ -31,11 +31,14 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	//Unprotected routes
-	userRoutes.AuthRoutes(router)
+	// Initialize version group
+	v1 := router.Group("/v1")
 
-	//protected
-	userRoutes.UserRoutes(router)
+	// Unprotected routes under version 1
+	userRoutes.AuthRoutes(v1)
+
+	// Protected routes under version 1
+	userRoutes.UserRoutes(v1)
 
 	// API-2
 

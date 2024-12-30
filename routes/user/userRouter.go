@@ -8,12 +8,13 @@ import (
 )
 
 // UserRoutes function
-func UserRoutes(incomingRoutes *gin.Engine) {
-	// incomingRoutes.Use(middleware.CORSMiddleware())
-	incomingRoutes.Use(middleware.Authentication())
-	incomingRoutes.GET("/users", controller.GetUsers())
-	incomingRoutes.POST("/users/validate-otp", controller.ValidateOTP())
-	incomingRoutes.GET("/users/:user_id", controller.GetUser())
-	incomingRoutes.POST("/users/:user_id/edit", controller.EditUser())
-	incomingRoutes.POST("/user/change-password", controller.ChangePassword())
+func UserRoutes(v1 *gin.RouterGroup) {
+	// v1.Use(middleware.CORSMiddleware())
+	v1.Use(middleware.Authentication())
+	v1.GET("/users/:user_id", controller.GetUser())
+	v1.POST("/users/:user_id/edit", controller.EditUser())
+
+	v1.Use(middleware.AdminMiddleware())
+	v1.GET("/users", controller.GetUsers())
+	v1.POST("/users/:user_id/updateUserType", controller.UpdateUserType())
 }

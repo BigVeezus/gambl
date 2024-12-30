@@ -7,10 +7,8 @@ import (
 )
 
 // Auth Routes function
-func AuthRoutes(incomingRoutes *gin.Engine) {
-	// incomingRoutes.Use(middleware.CORSMiddleware())
-	incomingRoutes.POST("/users/signup", controller.SignUp())
-	incomingRoutes.POST("/users/login", controller.Login())
-	incomingRoutes.POST("/users/resend-otp", controller.ResendOTP())
-	incomingRoutes.POST("/otp", controller.TestOTP())
+func AuthRoutes(v1 *gin.RouterGroup) {
+	v1.POST("/signup", controller.SignUp())
+	v1.POST("/admin/signup", controller.SignUpAdmin())
+	v1.POST("/login", controller.Login())
 }

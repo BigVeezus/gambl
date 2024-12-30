@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strconv"
+	"strings"
 
 	"net/http"
 	"time"
@@ -13,50 +14,24 @@ import (
 
 	"gambl/database"
 
-	config "gambl/config"
 	helper "gambl/helpers"
 	"gambl/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 
 var validateUser = validator.New()
 
-// HashPassword is used to encrypt the password before it is stored in the DB
-func HashPassword(password string) string {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	return string(bytes)
-}
-
-// VerifyPassword checks the input password while verifying it with the passward in the DB.
-func VerifyPassword(userPassword string, providedPassword string) (bool, string) {
-	err := bcrypt.CompareHashAndPassword([]byte(providedPassword), []byte(userPassword))
-	check := true
-	msg := ""
-
-	if err != nil {
-		msg = "login or passowrd is incorrect"
-		check = false
-	}
-
-	return check, msg
-}
-
-// CreateUser is the api used to tget a single user
+// CreateUser
 func SignUp() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 50*time.Second)
 		defer cancel()
-		var user models.SignUpUser
+		var user models.User
 
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -69,32 +44,43 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
-		count, _ := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
+		userName := cleanUsername(*user.User_name)
+		user.User_name = &userName
+
+		filter := bson.M{
+			"$or": []bson.M{
+				{"email": user.Email},
+				{"user_name": user.User_name},
+			},
+		}
+
+		count, err := userCollection.CountDocuments(ctx, filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking user existence"})
+			return
+		}
 
 		if count > 0 {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or phone number already exists"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or username already exists"})
 			return
 		}
 
 		password := HashPassword(*user.Password)
 		user.Password = &password
 
+		user.User_type = "USER"
+
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.Updated_at = user.Created_at
 		user.ID = primitive.NewObjectID()
-		user.User_id = user.ID.Hex()
-		user.Status = "INACTIVE"
-		token, _, err := helper.GenerateAllTokens(*user.Email, "UNBOARDED", user.User_id)
+		token, refreshToken, err := helper.GenerateAllTokens(*user.Email, user.User_type, user.ID.Hex())
+		user.Refresh_token = &refreshToken
 
 		if err != nil {
 			msg := "couldnt generate token"
 			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
 			return
 		}
-
-		user.OTP = config.GenerateOTP(4)
-
-		config.SendOTPMail(*user.Email, user.OTP)
 
 		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
 		if insertErr != nil {
@@ -104,246 +90,213 @@ func SignUp() gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"user":      resultInsertionNumber,
-			"jwt_token": string(token)})
-
-	}
-}
-
-func ValidateOTP() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		var otp models.Otp
-		var user models.User
-
-		if err := c.BindJSON(&otp); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		validationErr := validateUser.Struct(otp)
-
-		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
-			return
-		}
-
-		userId, _ := c.Get("uid")
-		id := userId.(string)
-
-		err := userCollection.FindOne(ctx, bson.M{"user_id": id}).Decode(&user)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "user doesnt exist"})
-			return
-		}
-
-		if user.OTP != *otp.OTP {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid OTP!"})
-			return
-		}
-
-		filter := bson.D{{Key: "user_id", Value: id}}
-
-		update := bson.D{{Key: "$set", Value: bson.D{
-			{Key: "otpVerified", Value: true},
-		}}}
-
-		_, insertErr := userCollection.UpdateOne(ctx, filter, update)
-		if insertErr != nil {
-			msg := "otp was not updated"
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"msg":     "OTP validated",
+			"user":          resultInsertionNumber,
+			"jwt_token":     string(token),
+			"refresh_token": refreshToken,
 		})
+
 	}
 }
 
-func ChangePassword() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		var newPasswordPayload models.ChangeUserPassword
-		var user models.User
-
-		if err := c.BindJSON(&newPasswordPayload); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		validationErr := validateUser.Struct(newPasswordPayload)
-
-		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
-			return
-		}
-
-		if *newPasswordPayload.New_password != *newPasswordPayload.Confirm_password {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "new password doesnt match confirm password!"})
-			return
-		}
-
-		userId, _ := c.Get("uid")
-		id := userId.(string)
-
-		err := userCollection.FindOne(ctx, bson.M{"user_id": id}).Decode(&user)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "user doesnt exist"})
-			return
-		}
-
-		passwordIsValid, _ := VerifyPassword(*newPasswordPayload.Old_password, *user.Password)
-		if !passwordIsValid {
-			c.JSON(http.StatusForbidden, gin.H{"error": "old password incorrect"})
-			return
-		}
-
-		password := HashPassword(*newPasswordPayload.New_password)
-
-		filter := bson.D{{Key: "user_id", Value: id}}
-
-		update := bson.D{{Key: "$set", Value: bson.D{
-			{Key: "password", Value: password},
-		}}}
-
-		_, insertErr := userCollection.UpdateOne(ctx, filter, update)
-		if insertErr != nil {
-			msg := "password was not updated"
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"msg":     "password changed",
-		})
-	}
-}
-
-func ResendOTP() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		var resendOtp models.ResendOtp
-		var user models.User
-
-		if err := c.BindJSON(&resendOtp); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		validationErr := validateUser.Struct(resendOtp)
-
-		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
-			return
-		}
-
-		err := userCollection.FindOne(ctx, bson.M{"email": resendOtp.Email}).Decode(&user)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "user doesnt exist"})
-			return
-		}
-
-		u_type := user.User_type
-		otp := config.GenerateOTP(4)
-
-		if *u_type != "UNBOARDED" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user has been onboarded"})
-			return
-		}
-
-		token, _, err := helper.GenerateAllTokens(*user.Email, "UNBOARDED", user.User_id)
-
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "could not generate token"})
-			return
-		}
-
-		filter := bson.D{{Key: "email", Value: resendOtp.Email}}
-
-		update := bson.D{{Key: "$set", Value: bson.D{
-			{Key: "otp", Value: otp},
-		}}}
-
-		_, insertErr := userCollection.UpdateOne(ctx, filter, update)
-		if insertErr != nil {
-			msg := "otp was not sent"
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"msg":   "OTP sent",
-			"token": token,
-		})
-	}
-}
-
-func TestOTP() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var _, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		config.SendOTPMail("elvis.osujic@gmail.com", "4000")
-
-		c.JSON(http.StatusOK, gin.H{
-			"msg": "OTP sent",
-		})
-	}
-}
-
-func Login() gin.HandlerFunc {
+// Create Admin
+func SignUpAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 50*time.Second)
 		defer cancel()
 		var user models.User
-		var foundUser models.User
 
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
-		if err != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "login or passowrd is incorrect"})
+		validationErr := validateUser.Struct(user)
+		if validationErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
 			return
 		}
 
+		userName := strings.ToLower(*user.User_name)
+		user.User_name = &userName
+
+		filter := bson.M{
+			"$or": []bson.M{
+				{"email": user.Email},
+				{"user_name": user.User_name},
+			},
+		}
+
+		count, err := userCollection.CountDocuments(ctx, filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking user existence"})
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or username already exists"})
+			return
+		}
+
+		password := HashPassword(*user.Password)
+		user.Password = &password
+
+		user.User_type = "ADMIN"
+
+		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.Updated_at = user.Created_at
+		user.ID = primitive.NewObjectID()
+		token, refreshToken, err := helper.GenerateAllTokens(*user.Email, user.User_type, user.ID.Hex())
+		user.Refresh_token = &refreshToken
+
+		if err != nil {
+			msg := "couldnt generate token"
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+
+		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
+		if insertErr != nil {
+			msg := "User item was not created"
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"user":          resultInsertionNumber,
+			"jwt_token":     string(token),
+			"refresh_token": refreshToken,
+		})
+
+	}
+}
+
+// func ChangePassword() gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		var ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+// 		defer cancel()
+
+// 		var newPasswordPayload models.ChangeUserPassword
+// 		var user models.User
+
+// 		if err := c.BindJSON(&newPasswordPayload); err != nil {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 			return
+// 		}
+
+// 		validationErr := validateUser.Struct(newPasswordPayload)
+
+// 		if validationErr != nil {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+// 			return
+// 		}
+
+// 		if *newPasswordPayload.New_password != *newPasswordPayload.Confirm_password {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": "new password doesnt match confirm password!"})
+// 			return
+// 		}
+
+// 		userId, _ := c.Get("uid")
+// 		id := userId.(string)
+
+// 		err := userCollection.FindOne(ctx, bson.M{"user_id": id}).Decode(&user)
+// 		if err != nil {
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": "user doesnt exist"})
+// 			return
+// 		}
+
+// 		passwordIsValid, _ := VerifyPassword(*newPasswordPayload.Old_password, *user.Password)
+// 		if !passwordIsValid {
+// 			c.JSON(http.StatusForbidden, gin.H{"error": "old password incorrect"})
+// 			return
+// 		}
+
+// 		password := HashPassword(*newPasswordPayload.New_password)
+
+// 		filter := bson.D{{Key: "user_id", Value: id}}
+
+// 		update := bson.D{{Key: "$set", Value: bson.D{
+// 			{Key: "password", Value: password},
+// 		}}}
+
+// 		_, insertErr := userCollection.UpdateOne(ctx, filter, update)
+// 		if insertErr != nil {
+// 			msg := "password was not updated"
+// 			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+// 			return
+// 		}
+
+// 		c.JSON(http.StatusOK, gin.H{
+// 			"success": true,
+// 			"msg":     "password changed",
+// 		})
+// 	}
+// }
+
+func Login() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 50*time.Second)
+		defer cancel() // Ensures the context is canceled after execution
+
+		var user models.User
+		var foundUser models.User
+
+		// Parse incoming JSON
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate input
+		if user.Email == nil || user.Password == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email and password are required"})
+			return
+		}
+
+		// Find user by email
+		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "login or password is incorrect"})
+			return
+		}
+
+		// Verify password
 		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
 		if !passwordIsValid {
 			c.JSON(http.StatusForbidden, gin.H{"error": msg})
 			return
 		}
 
-		if foundUser.Email == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		// Generate tokens
+		token, refreshToken, err := helper.GenerateAllTokens(*foundUser.Email, foundUser.User_type, foundUser.ID.Hex())
+		if err != nil {
+			log.Printf("Error generating tokens: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate tokens"})
 			return
 		}
 
-		token, _, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.User_type, foundUser.User_id)
+		// Update refresh token in database
+		update := bson.M{"$set": bson.M{"refresh_token": refreshToken}}
+		_, err = userCollection.UpdateOne(ctx, bson.M{"_id": foundUser.ID}, update)
+		if err != nil {
+			log.Printf("Error updating refresh token: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not update refresh token"})
+			return
+		}
 
+		foundUser.Password = nil
+		foundUser.Refresh_token = nil
+
+		// Send response
 		c.JSON(http.StatusOK, gin.H{
-			"jwt_token": string(token),
-			"user":      foundUser,
+			"jwt_token":     token,
+			"refresh_token": refreshToken,
+			"user":          foundUser,
 		})
-
 	}
 }
 
 func GetUsers() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
-		if err := helper.RoleTypeCheck(c, "ADMIN", "65f2e8b6ab423f0349550c4f", "staff_indicators_charts:readk"); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
 
 		if err := helper.CheckUserType(c, "ADMIN"); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -426,7 +379,7 @@ func EditUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userId := c.Param("user_id")
 
-		var editUser models.EditUser
+		var editUser models.User
 		var user models.User
 
 		idLength := len(userId)
@@ -460,20 +413,8 @@ func EditUser() gin.HandlerFunc {
 			return
 		}
 
-		if editUser.First_name == nil {
-			editUser.First_name = user.First_name
-		}
-		if editUser.Address == nil {
-			editUser.Address = user.Address
-		}
-		if editUser.Last_name == nil {
-			editUser.Last_name = user.Last_name
-		}
-		if editUser.Phone == nil {
-			editUser.Phone = &user.Phone
-		}
-		if editUser.Role == nil {
-			editUser.Role = &user.Role
+		if editUser.User_name == nil {
+			editUser.User_name = user.User_name
 		}
 
 		editUser.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
@@ -481,11 +422,7 @@ func EditUser() gin.HandlerFunc {
 		filter := bson.D{{Key: "user_id", Value: userId}}
 
 		update := bson.D{{Key: "$set", Value: bson.D{
-			{Key: "first_name", Value: editUser.First_name},
-			{Key: "last_name", Value: editUser.Last_name},
-			{Key: "address", Value: editUser.Address},
-			{Key: "phone", Value: editUser.Phone},
-			{Key: "role", Value: editUser.Role},
+			{Key: "user_name", Value: editUser.User_name},
 			{Key: "updated_at", Value: editUser.Updated_at},
 		}}}
 
@@ -498,5 +435,77 @@ func EditUser() gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, resultInsertionNumber)
 
+	}
+}
+
+func UpdateUserType() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userId := c.Param("user_id")
+
+		// List of valid user types
+		validUserTypes := []string{"ADMIN", "USER", "CAPTAIN", "SUPER_ADMIN"}
+
+		// var editUser models.User
+		type User_type struct {
+			User_type string `json:"user_type"`
+		}
+		var user models.User
+
+		// Ensure userId is present in the URL parameter
+		idLength := len(userId)
+		if idLength == 0 {
+			err := "no userId found in param!"
+			c.JSON(http.StatusBadRequest, gin.H{"error": err})
+			return
+		}
+
+		var ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var userType User_type
+
+		// Parse the incoming JSON body to extract the new user type
+		if err := c.BindJSON(&userType); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate the user type
+		if !contains(validUserTypes, userType.User_type) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user type. Valid types are ADMIN, USER, CAPTAIN, SUPER_ADMIN"})
+			return
+		}
+
+		userObjId, _ := primitive.ObjectIDFromHex(userId)
+
+		// Find the user from the database
+		err := userCollection.FindOne(ctx, bson.M{"_id": userObjId}).Decode(&user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
+			return
+		}
+
+		// Update the user type and update timestamp
+		user.Updated_at = time.Now()
+
+		filter := bson.D{{Key: "_id", Value: userObjId}}
+
+		update := bson.D{{Key: "$set", Value: bson.D{
+			{Key: "user_type", Value: userType.User_type}, // Update user_type
+			{Key: "updated_at", Value: user.Updated_at},   // Update updated_at
+		}}}
+
+		// Perform the update in the database
+		_, insertErr := userCollection.UpdateOne(ctx, filter, update)
+		if insertErr != nil {
+			msg := "user type was not updated"
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+
+		// Return success response
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+		})
 	}
 }
