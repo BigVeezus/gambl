@@ -1,20 +1,19 @@
 package main
 
 import (
-	"os"
 	"log"
+	"os"
 
-	userRoutes "gambl/routes/user"
-	gameRoutes "gambl/routes/game"
 	gameController "gambl/controllers/game"
 	gameService "gambl/core/game"
+	gameRoutes "gambl/routes/game"
+	userRoutes "gambl/routes/user"
 
 	"github.com/DeanThompson/ginpprof"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	_"github.com/heroku/x/hmetrics/onload"
+	_ "github.com/heroku/x/hmetrics/onload"
 )
-
 
 func main() {
 	port := os.Getenv("PORT")
@@ -23,10 +22,9 @@ func main() {
 		port = "8000"
 	}
 
-	logger := log.New(os.Stdout, "[GAMBL]", log.LstdFlags) 
+	logger := log.New(os.Stdout, "[GAMBL]", log.LstdFlags)
 	gameService := gameService.NewGameService()
 	gameController := gameController.NewGameController(gameService, logger)
-
 
 	router := gin.New()
 
