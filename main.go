@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	userRoutes "gambl/routes/user"
+	routes "gambl/routes"
 
 	"github.com/DeanThompson/ginpprof"
 	"github.com/gin-contrib/cors"
@@ -34,11 +34,9 @@ func main() {
 	// Initialize version group
 	v1 := router.Group("/v1")
 
-	// Unprotected routes under version 1
-	userRoutes.AuthRoutes(v1)
-
-	// Protected routes under version 1
-	userRoutes.UserRoutes(v1)
+	routes.AuthRoutes(v1)
+	routes.UserRoutes(v1)
+	routes.RepRoutes(v1)
 
 	// API-2
 

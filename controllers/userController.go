@@ -44,8 +44,8 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
-		userName := cleanUsername(*user.User_name)
-		user.User_name = &userName
+		userName := cleanUsername(user.User_name)
+		user.User_name = userName
 
 		filter := bson.M{
 			"$or": []bson.M{
@@ -65,15 +65,16 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
-		password := HashPassword(*user.Password)
-		user.Password = &password
+		password := HashPassword(user.Password)
+		user.Password = password
 
 		user.User_type = "USER"
+		user.Score = 1
 
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Updated_at = user.Created_at
 		user.ID = primitive.NewObjectID()
-		token, refreshToken, err := helper.GenerateAllTokens(*user.Email, user.User_type, user.ID.Hex())
+		token, refreshToken, err := helper.GenerateAllTokens(user.Email, user.User_type, user.ID.Hex())
 		user.Refresh_token = &refreshToken
 
 		if err != nil {
@@ -116,8 +117,8 @@ func SignUpAdmin() gin.HandlerFunc {
 			return
 		}
 
-		userName := strings.ToLower(*user.User_name)
-		user.User_name = &userName
+		userName := strings.ToLower(user.User_name)
+		user.User_name = userName
 
 		filter := bson.M{
 			"$or": []bson.M{
@@ -137,15 +138,16 @@ func SignUpAdmin() gin.HandlerFunc {
 			return
 		}
 
-		password := HashPassword(*user.Password)
-		user.Password = &password
+		password := HashPassword(user.Password)
+		user.Password = password
 
 		user.User_type = "ADMIN"
+		user.Score = 1
 
 		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.Updated_at = user.Created_at
 		user.ID = primitive.NewObjectID()
-		token, refreshToken, err := helper.GenerateAllTokens(*user.Email, user.User_type, user.ID.Hex())
+		token, refreshToken, err := helper.GenerateAllTokens(user.Email, user.User_type, user.ID.Hex())
 		user.Refresh_token = &refreshToken
 
 		if err != nil {
@@ -246,12 +248,6 @@ func Login() gin.HandlerFunc {
 			return
 		}
 
-		// Validate input
-		if user.Email == nil || user.Password == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "email and password are required"})
-			return
-		}
-
 		// Find user by email
 		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
 		if err != nil {
@@ -260,14 +256,14 @@ func Login() gin.HandlerFunc {
 		}
 
 		// Verify password
-		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
+		passwordIsValid, msg := VerifyPassword(user.Password, foundUser.Password)
 		if !passwordIsValid {
 			c.JSON(http.StatusForbidden, gin.H{"error": msg})
 			return
 		}
 
 		// Generate tokens
-		token, refreshToken, err := helper.GenerateAllTokens(*foundUser.Email, foundUser.User_type, foundUser.ID.Hex())
+		token, refreshToken, err := helper.GenerateAllTokens(foundUser.Email, foundUser.User_type, foundUser.ID.Hex())
 		if err != nil {
 			log.Printf("Error generating tokens: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate tokens"})
@@ -283,7 +279,7 @@ func Login() gin.HandlerFunc {
 			return
 		}
 
-		foundUser.Password = nil
+		foundUser.Password = "nil"
 		foundUser.Refresh_token = nil
 
 		// Send response
@@ -413,7 +409,7 @@ func EditUser() gin.HandlerFunc {
 			return
 		}
 
-		if editUser.User_name == nil {
+		if editUser.User_name == "" {
 			editUser.User_name = user.User_name
 		}
 
