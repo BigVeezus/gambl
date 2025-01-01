@@ -5,7 +5,10 @@ import (
 	"os"
 
 	gameController "gambl/controllers/game"
-	gameService "gambl/core/game"
+	userController "gambl/controllers/user"
+	"gambl/core/game"
+	"gambl/core/user"
+	"gambl/database"
 	gameRoutes "gambl/routes/game"
 	userRoutes "gambl/routes/user"
 
@@ -22,8 +25,17 @@ func main() {
 		port = "8000"
 	}
 
+	// initialize logger
 	logger := log.New(os.Stdout, "[GAMBL]", log.LstdFlags)
-	gameService := gameService.NewGameService()
+
+	mongoClient := database.Client
+
+	// Initialize services with the respective repositories
+	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
+	gameService := game.NewGameService()
+
+	// Initialize controllers with the respective services and logger
+	userController := userController.NewUserController(*userService, logger)
 	gameController := gameController.NewGameController(gameService, logger)
 
 	router := gin.New()
@@ -43,10 +55,10 @@ func main() {
 	v1 := router.Group("/v1")
 
 	// Unprotected routes under version 1
-	userRoutes.AuthRoutes(v1)
+	userRoutes.SetupAuthRoutes(v1, userController)
 
 	// Protected routes under version 1
-	userRoutes.UserRoutes(v1)
+	userRoutes.SetupUserRoutes(v1, userController)
 	gameRoutes.SetupGameRoutes(v1, gameController)
 
 	// API-2

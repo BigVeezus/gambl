@@ -3,13 +3,15 @@ package controllers
 import (
 	"gambl/core/game"
 
-	"github.com/go-playground/validator/v10"
+	"fmt"
 	"log"
-    "fmt"
-    "strings"
+	"strings"
+
+	"github.com/go-playground/validator/v10"
+
+	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 type GameController struct {
