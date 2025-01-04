@@ -3,18 +3,30 @@ package controllers
 import (
     "gambl/core/game"
     "time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Request DTOs
 type CreateGameRequest struct {
-	CreatorID	  string	`json:"creator_id" binding:"required"`
-    GamblType     string    `json:"gambl_type" binding:"required,oneof=public_event custom_event esports"`
+	CreatorID	  string	`json:"creatorID" binding:"required"`
+    GamblType     string    `json:"gamblType" binding:"required,oneof=public_event custom_event esports"`
     Title         string    `json:"title" binding:"required"`
     Description   string    `json:"description" binding:"required"`
-    Stakes        []StakeRequest `json:"stakes" binding:"required,min=1"`
-    Deadline      time.Time `json:"deadline" binding:"required,gtfield=time.Now"`
+    // Stakes        []StakeRequest `json:"stakes" binding:"required,min=1"`
+    Deadline      time.Time `json:"deadline" binding:"required,gt=time.Now"`
     TeamSize      int       `json:"team_size" binding:"omitempty,min=1"`
-    VerificationRequirements VerificationConfigRequest `json:"verification_requirements" binding:"required"`
+    // VerificationRequirements VerificationConfigRequest `json:"verification_requirements" binding:"required"`
+}
+
+type ListGamesRequest struct {
+    Status    []string  `form:"status"`
+    Type      string    `form:"type"`
+    CreatorID string    `form:"creator_id"`
+    FromDate  time.Time `form:"from_date" time_format:"2006-01-02T15:04:05Z07:00"`
+    ToDate    time.Time `form:"to_date" time_format:"2006-01-02T15:04:05Z07:00"`
+    Limit     int       `form:"limit,default=10"`
+    Offset    int       `form:"offset,default=0"`
 }
 
 type StakeRequest struct {
@@ -33,7 +45,7 @@ type VerificationConfigRequest struct {
 
 // Response DTOs
 type GameResponse struct {
-    ID            string              `json:"id"`
+    ID            primitive.ObjectID `bson:"_id"`
     CreatorID     string             `json:"creator_id"`
     GamblType     string             `json:"gambl_type"`
     Title         string             `json:"title"`
@@ -69,41 +81,41 @@ type VerificationConfigResponse struct {
 // Conversion methods
 func (req *CreateGameRequest) ToGameModel(creatorID string) *game.Game {
     return &game.Game{
-        CreatorID:     creatorID,
-        GamblType:     req.GamblType,
+        Creator_ID:     creatorID,
+        Gambl_Type:     req.GamblType,
         Title:         req.Title,
         Description:   req.Description,
-        Stakes:        convertStakeRequests(req.Stakes, ""),  // GameID will be set after creation
+        // Stakes:        convertStakeRequests(req.Stakes, ""),  // GameID will be set after creation
         Status:        game.StatusCreated,
         Deadline:      req.Deadline,
-        TeamSize:      req.TeamSize,
-        CreatedAt:     time.Now(),
-        UpdatedAt:     time.Now(),
-        VerificationRequirements: game.VerificationConfig{
-            RequiredProofs:    req.VerificationRequirements.RequiredProofs,
-            AllowedProofTypes: req.VerificationRequirements.AllowedProofTypes,
-            MinimumVerifiers:  req.VerificationRequirements.MinimumVerifiers,
-        },
+        Team_Size:      req.TeamSize,
+        Created_At:     time.Now(),
+        Updated_At:     time.Now(),
+        // Verification_Requirements: game.Verification_Config{
+        //     Required_Proofs:    req.Verification_Requirements.Required_Proofs,
+        //     Allowed_Proof_Types: req.Verification_Requirements.Allowed_Proof_Types,
+        //     Minimum_Verifiers:  req.Verification_Requirements.Minimum_Verifiers,
+        // },
     }
 }
 
 func NewGameResponse(g *game.Game) *GameResponse {
     return &GameResponse{
         ID:            g.ID,
-        CreatorID:     g.CreatorID,
-        GamblType:     g.GamblType,
+        CreatorID:     g.Creator_ID,
+        GamblType:     g.Gambl_Type,
         Title:         g.Title,
         Description:   g.Description,
         Stakes:        convertToStakeResponses(g.Stakes),
         Status:        g.Status,
         Deadline:      g.Deadline,
-        TeamSize:      g.TeamSize,
-        CreatedAt:     g.CreatedAt,
-        UpdatedAt:     g.UpdatedAt,
+        TeamSize:      g.Team_Size,
+        CreatedAt:     g.Created_At,
+        UpdatedAt:     g.Updated_At,
         VerificationRequirements: VerificationConfigResponse{
-            RequiredProofs:    g.VerificationRequirements.RequiredProofs,
-            AllowedProofTypes: g.VerificationRequirements.AllowedProofTypes,
-            MinimumVerifiers:  g.VerificationRequirements.MinimumVerifiers,
+            RequiredProofs:    g.Verification_Requirements.Required_Proofs,
+            AllowedProofTypes: g.Verification_Requirements.Allowed_Proof_Types,
+            MinimumVerifiers:  g.Verification_Requirements.Minimum_Verifiers,
         },
     }
 }

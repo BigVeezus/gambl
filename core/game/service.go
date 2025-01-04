@@ -2,26 +2,24 @@
 package game
 
 import (
-    "context"
-    "errors"
-    "time"
-    "log"
-)
+	"context"
+	"encoding/json"
+	"log"
+	"time"
 
-var (
-    ErrGameNotFound     = errors.New("game not found")
-    ErrInvalidGameState = errors.New("invalid game state")
-    ErrUnauthorized     = errors.New("unauthorized action")
-    ErrStakeNotAllowed  = errors.New("staking not allowed")
-    ErrDuplicateStake   = errors.New("user has already staked")
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	// "go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	// "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // GameService defines all game-related business operations
 type GameService interface {
     // Game Management
     CreateGame(ctx context.Context, game *Game) error
-    // GetGame(ctx context.Context, id string) (*Game, error)
-    // ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
+    GetGame(ctx context.Context, id string) (*Game, error)
+    ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
     
     // // Stake Operations
     // PlaceStake(ctx context.Context, gameID string, stake *GameStake) error
@@ -63,16 +61,14 @@ type StakeFilters struct {
 
 // gameService implements GameService
 type gameService struct {
-    // repo       GameRepository
-    // userSvc    UserService    // Interface for user-related operations
-    // walletSvc  WalletService  // Interface for wallet operations
+    Collection       *mongo.Collection
     // notifier   NotifierService // Interface for notifications
 }
 
 // NewGameService creates a new game service
-func NewGameService() GameService {
+func NewGameService(collection *mongo.Collection) GameService {
     log.Printf("Init: create game service")
-    return &gameService{}
+    return &gameService{Collection: collection}
 }
 
 // Implementation of CreateGame
@@ -80,25 +76,102 @@ func (s *gameService) CreateGame(ctx context.Context, game *Game) error {
     log.Printf("Init: create game service")
 
     // Validate game creation parameters
-    if err := ValidateGameCreation(game); err != nil {
+    err := ValidateGameCreation(game)
+    if err != nil {
         return err
     }
 
     // Set initial game status
     game.Status = StatusCreated
-    game.CreatedAt = time.Now()
-    game.UpdatedAt = time.Now()
+    game.ID = primitive.NewObjectID()
+    game.Created_At = time.Now()
+    game.Updated_At = time.Now()
 
 //     // Store the game
 //     if err := s.repo.Create(ctx, game); err != nil {
 //         return err
 //     }
+gameJSON, _ := json.MarshalIndent(game, "", "  ")
+log.Printf("Game Details Before Creation:\n%s", string(gameJSON))
+    _, err = s.Collection.InsertOne(ctx, game)
 
 //     // Notify relevant parties
 //     s.notifier.NotifyGameCreated(ctx, game)
     
-    return ErrStakeNotAllowed
+    return err
 }
+
+// GetGame retrieves a single game by ID
+func (s *gameService) GetGame(ctx context.Context, id string) (*Game, error) {
+    objectID, err := primitive.ObjectIDFromHex(id)
+    if err != nil {
+        return nil, err
+    }
+
+    var game Game
+    err = s.Collection.FindOne(ctx, primitive.M{"_id": objectID}).Decode(&game)
+    if err != nil {
+        if err == mongo.ErrNoDocuments {
+            return nil, ErrGameNotFound
+        }
+        return nil, err
+    }
+
+    return &game, nil
+}
+
+// ListGames retrieves games based on filters
+func (s *gameService) ListGames(ctx context.Context, filters GameFilters) ([]Game, error) {
+    // Build filter
+    filter := primitive.M{}
+    
+    if len(filters.Status) > 0 {
+        filter["status"] = primitive.M{"$in": filters.Status}
+    }
+    
+    if filters.Type != "" {
+        filter["gambl_type"] = filters.Type
+    }
+    
+    if filters.CreatorID != "" {
+        filter["creator_id"] = filters.CreatorID
+    }
+    
+    if !filters.FromDate.IsZero() {
+        filter["created_at"] = primitive.M{"$gte": filters.FromDate}
+    }
+    
+    if !filters.ToDate.IsZero() {
+        if _, exists := filter["created_at"]; exists {
+            filter["created_at"].(primitive.M)["$lte"] = filters.ToDate
+        } else {
+            filter["created_at"] = primitive.M{"$lte": filters.ToDate}
+        }
+    }
+
+    // Set up options for pagination
+    opts := options.Find()
+    if filters.Limit > 0 {
+        opts.SetLimit(int64(filters.Limit))
+    }
+    if filters.Offset > 0 {
+        opts.SetSkip(int64(filters.Offset))
+    }
+
+    cursor, err := s.Collection.Find(ctx, filter, opts)
+    if err != nil {
+        return nil, err
+    }
+    defer cursor.Close(ctx)
+
+    var games []Game
+    if err = cursor.All(ctx, &games); err != nil {
+        return nil, err
+    }
+
+    return games, nil
+}
+
 
 // Implementation of PlaceStake
 // func (s *gameService) PlaceStake(ctx context.Context, gameID string, stake *GameStake) error {

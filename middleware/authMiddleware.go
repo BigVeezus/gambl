@@ -20,7 +20,7 @@ func Authentication() gin.HandlerFunc {
 
 		clientToken := c.Request.Header.Get("Authorization")
 		if clientToken == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "No Authorization header provided"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No Authorization header provided"})
 			c.Abort()
 			return
 		}
@@ -29,7 +29,7 @@ func Authentication() gin.HandlerFunc {
 
 		claims, err := helper.ValidateToken(bearerToken[1])
 		if err != "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 			c.Abort()
 			return
 		}

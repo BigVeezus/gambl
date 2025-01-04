@@ -13,6 +13,8 @@ func SetupGameRoutes(router *gin.RouterGroup, gameController *controllers.GameCo
 	// v1.Use(middleware.CORSMiddleware())
 	{
 		protected.POST("/", gameController.CreateGame())
+		protected.GET("/:game_id", gameController.GetGame())
+		protected.GET("/", gameController.ListGames())
 	}
 	// v1.GET("/games", gc.GetGames())
 

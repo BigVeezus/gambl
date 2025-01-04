@@ -32,7 +32,7 @@ func main() {
 
 	// Initialize services with the respective repositories
 	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
-	gameService := game.NewGameService()
+	gameService := game.NewGameService(database.OpenCollection(mongoClient, "games"))
 
 	// Initialize controllers with the respective services and logger
 	userController := userController.NewUserController(*userService, logger)

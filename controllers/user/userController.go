@@ -77,7 +77,6 @@ func (uc *UserController) CreateUser() gin.HandlerFunc {
 
 func (uc *UserController) Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var loginRequest struct {
 			Email    string `json:"email" binding:"required,email"`
 			Password string `json:"password" binding:"required"`
@@ -100,7 +99,7 @@ func (uc *UserController) Login() gin.HandlerFunc {
 				uc.logger.Printf("Validation errors:\n%s", strings.Join(errorMessages, "\n"))
 
 				// Return error response in a single pass without extra allocations
-				c.JSON(http.StatusBadRequest, gin.H{
+				c.JSON(http.StatusBadGateway, gin.H{
 					"error":   "Validation failed",
 					"details": errorMessages,
 				})

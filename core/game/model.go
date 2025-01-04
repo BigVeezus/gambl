@@ -4,6 +4,8 @@ package game
 import (
     "errors"
     "time"
+
+    "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type GameStatus string
@@ -17,19 +19,40 @@ const (
     StatusDisputed  GameStatus = "DISPUTED"
 )
 
+// At the top of model.go with other error definitions
+
+var (
+    // Existing errors
+    ErrInvalidAmount      = errors.New("stake amount must be greater than 0")
+    ErrInvalidPercentages = errors.New("win and lose percentages must sum to 100")
+    ErrInvalidDeadline    = errors.New("deadline must be in the future")
+    ErrInvalidTeamSize    = errors.New("team size must be greater than 0")
+    ErrMissingCreator     = errors.New("creator ID is required")
+    ErrInvalidProofs      = errors.New("verification requirements are invalid")
+    ErrInvalidCurrency    = errors.New("unsupported currency")
+    ErrInvalidPayoutChannel = errors.New("invalid payout channel")
+    
+    // Add service-level errors here
+    ErrGameNotFound     = errors.New("game not found")
+    ErrInvalidGameState = errors.New("invalid game state")
+    ErrUnauthorized     = errors.New("unauthorized action")
+    ErrStakeNotAllowed  = errors.New("staking not allowed")
+    ErrDuplicateStake   = errors.New("user has already staked")
+)
+
 type Game struct {
-    ID            string      `json:"id" bson:"_id,omitempty"`
-    CreatorID     string      `json:"creator_id"`
-    GamblType     string      `json:"gambl_type"` // public_event, custom_event, esports
+    ID            primitive.ObjectID `bson:"_id"`
+    Creator_ID     string      `json:"creator_id"`
+    Gambl_Type     string      `json:"gambl_type"` // public_event, custom_event, esports
     Title         string      `json:"title"`
     Description   string      `json:"description"`
     Stakes        []GameStake `json:"stakes"`
     Status        GameStatus  `json:"status"`
     Deadline      time.Time   `json:"deadline"`
-    TeamSize      int         `json:"team_size,omitempty"` // Optional, for team games
-    CreatedAt     time.Time   `json:"created_at"`
-    UpdatedAt     time.Time   `json:"updated_at"`
-    VerificationRequirements VerificationConfig `json:"verification_requirements"`
+    Team_Size      int         `json:"team_size,omitempty"` // Optional, for team games
+    Created_At     time.Time   `json:"created_at"`
+    Updated_At     time.Time   `json:"updated_at"`
+    Verification_Requirements VerificationConfig `json:"verification_requirements"`
 }
 
 type GameStake struct {
@@ -63,16 +86,16 @@ type Winner struct {
 }
 
 type VerificationConfig struct {
-    RequiredProofs    int      `json:"required_proofs"`
-    AllowedProofTypes []string `json:"allowed_proof_types"` // image, video, link
-    MinimumVerifiers  int      `json:"minimum_verifiers"`
+    Required_Proofs    int      `json:"required_proofs"`
+    Allowed_Proof_Types []string `json:"allowed_proof_types"` // image, video, link
+    Minimum_Verifiers  int      `json:"minimum_verifiers"`
 }
 
 type VerificationProof struct {
-    VerifierID   string    `json:"verifier_id"`
-    ProofType    string    `json:"proof_type"`
-    ProofURL     string    `json:"proof_url"`
-    SubmittedAt  time.Time `json:"submitted_at"`
+    Verifier_ID   string    `json:"verifier_id"`
+    Proof_Type    string    `json:"proof_type"`
+    Proof_URL     string    `json:"proof_url"`
+    Submitted_At  time.Time `json:"submitted_at"`
 }
 
 type GameWinner struct {
@@ -80,17 +103,6 @@ type GameWinner struct {
 	playerId string
 	teamId string
 }
-
-var (
-    ErrInvalidAmount      = errors.New("stake amount must be greater than 0")
-    ErrInvalidPercentages = errors.New("win and lose percentages must sum to 100")
-    ErrInvalidDeadline    = errors.New("deadline must be in the future")
-    ErrInvalidTeamSize    = errors.New("team size must be greater than 0")
-    ErrMissingCreator     = errors.New("creator ID is required")
-    ErrInvalidProofs      = errors.New("verification requirements are invalid")
-    ErrInvalidCurrency    = errors.New("unsupported currency")
-    ErrInvalidPayoutChannel = errors.New("invalid payout channel")
-)
 
 // Supported values
 var (
@@ -114,7 +126,7 @@ var (
 )
 
 func (g *Game) Validate() error {
-    if g.CreatorID == "" {
+    if g.Creator_ID == "" {
         return ErrMissingCreator
     }
 
@@ -122,7 +134,7 @@ func (g *Game) Validate() error {
         return ErrInvalidDeadline
     }
 
-    if g.TeamSize < 0 {
+    if g.Team_Size < 0 {
         return ErrInvalidTeamSize
     }
 
@@ -133,7 +145,7 @@ func (g *Game) Validate() error {
         }
     }
 
-    return g.VerificationRequirements.Validate()
+    return g.Verification_Requirements.Validate()
 }
 
 func (s *GameStake) Validate() error {
@@ -157,20 +169,20 @@ func (s *GameStake) Validate() error {
 }
 
 func (v *VerificationConfig) Validate() error {
-    if v.RequiredProofs <= 0 || v.MinimumVerifiers <= 0 {
-        return ErrInvalidProofs
-    }
+    // if v.RequiredProofs <= 0 || v.MinimumVerifiers <= 0 {
+    //     return ErrInvalidProofs
+    // }
 
-    // Validate proof types
-    for _, proofType := range v.AllowedProofTypes {
-        if !ValidProofTypes[proofType] {
-            return errors.New("invalid proof type: " + proofType)
-        }
-    }
+    // // Validate proof types
+    // for _, proofType := range v.AllowedProofTypes {
+    //     if !ValidProofTypes[proofType] {
+    //         return errors.New("invalid proof type: " + proofType)
+    //     }
+    // }
 
-    if len(v.AllowedProofTypes) == 0 {
-        return errors.New("at least one proof type must be allowed")
-    }
+    // if len(v.AllowedProofTypes) == 0 {
+    //     return errors.New("at least one proof type must be allowed")
+    // }
 
     return nil
 }
@@ -214,15 +226,15 @@ func (w *Winner) Validate() error {
 }
 
 func (v *VerificationProof) Validate() error {
-    if v.VerifierID == "" {
+    if v.Verifier_ID == "" {
         return errors.New("verifier ID is required")
     }
 
-    if !ValidProofTypes[v.ProofType] {
+    if !ValidProofTypes[v.Proof_Type] {
         return errors.New("invalid proof type")
     }
 
-    if v.ProofURL == "" {
+    if v.Proof_URL == "" {
         return errors.New("proof URL is required")
     }
 
@@ -234,14 +246,8 @@ func ValidateGameCreation(g *Game) error {
     if err := g.Validate(); err != nil {
         return err
     }
-
-    // Additional game creation specific validations
-    if len(g.Stakes) == 0 {
-        return errors.New("game must have at least one stake")
-    }
-
     // Validate game type
-    switch g.GamblType {
+    switch g.Gambl_Type {
     case "public_event", "custom_event", "esports":
         // valid
     default:
