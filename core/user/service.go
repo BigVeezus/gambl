@@ -53,12 +53,6 @@ func (s *UserService) CreateUser(ctx context.Context, user *User) error {
 		return fmt.Errorf("failed to check for existing user: %w", err)
 	}
 
-	// _ = s.Collection.FindOne(ctx, filter).Decode(&existingUser)
-
-	// if existingUser.ID != primitive.NilObjectID {
-	// 	return errors.New("email or username already exists")
-	// }
-
 	user.Score = 1
 	user.User_type = NormalUser
 

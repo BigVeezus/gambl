@@ -1,39 +1,32 @@
-package aIcontrollers
+package controllers
 
-import (
-	"net/http"
+// import (
+// 	"github.com/go-playground/validator/v10"
+// )
 
-	config "gambl/config"
+// // var validateUser = validator.New()
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
+// func OpenAiEndpoint() gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		var aImodel models.AIModel
 
-	"gambl/models"
-)
+// 		if err := c.BindJSON(&aImodel); err != nil {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 			return
+// 		}
 
-var validateUser = validator.New()
+// 		validationErr := validateUser.Struct(aImodel)
+// 		if validationErr != nil {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+// 			return
+// 		}
 
-func OpenAiEndpoint() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var aImodel models.AIModel
+// 		result, err := config.AskOpenAI(aImodel.Prompt)
+// 		if err != nil {
+// 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+// 			return
+// 		}
 
-		if err := c.BindJSON(&aImodel); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		validationErr := validateUser.Struct(aImodel)
-		if validationErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
-			return
-		}
-
-		result, err := config.AskOpenAI(aImodel.Prompt)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, result)
-	}
-}
+// 		c.JSON(http.StatusOK, result)
+// 	}
+// }

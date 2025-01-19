@@ -5,12 +5,17 @@ import (
 	"os"
 
 	gameController "gambl/controllers/game"
+	paymentController "gambl/controllers/payment"
 	userController "gambl/controllers/user"
 	"gambl/core/game"
+	"gambl/core/payment"
 	"gambl/core/user"
 	"gambl/database"
 	gameRoutes "gambl/routes/game"
+	paymentRoutes "gambl/routes/payment"
 	userRoutes "gambl/routes/user"
+
+	providers "gambl/providers/payment"
 
 	"github.com/DeanThompson/ginpprof"
 	"github.com/gin-contrib/cors"
@@ -30,13 +35,27 @@ func main() {
 
 	mongoClient := database.Client
 
+	// Initialize providers with keys from environment variables
+	paystackProvider := providers.NewPaystackProvider(
+		os.Getenv("PAYSTACK_SECRET_KEY"),
+		os.Getenv("PAYSTACK_PUBLIC_KEY"),
+	)
+
+	flutterwaveProvider := providers.NewFlutterwaveProvider(
+		os.Getenv("FLW_SECRET_KEY"),
+		os.Getenv("FLW_PUB_KEY"),
+	)
+
 	// Initialize services with the respective repositories
 	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
 	gameService := game.NewGameService(database.OpenCollection(mongoClient, "games"))
+	paymentService := payment.NewPaymentService(database.OpenCollection(mongoClient, "payments"), paystackProvider,
+		flutterwaveProvider)
 
 	// Initialize controllers with the respective services and logger
 	userController := userController.NewUserController(*userService, logger)
 	gameController := gameController.NewGameController(gameService, logger)
+	paymentController := paymentController.NewPaymentController(paymentService, logger)
 
 	router := gin.New()
 
@@ -60,6 +79,7 @@ func main() {
 	// Protected routes under version 1
 	userRoutes.SetupUserRoutes(v1, userController)
 	gameRoutes.SetupGameRoutes(v1, gameController)
+	paymentRoutes.SetupPaymentsRoutes(v1, paymentController)
 
 	// API-2
 

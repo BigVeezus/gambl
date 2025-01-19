@@ -14,8 +14,4 @@ func SetupAuthRoutes(router *gin.RouterGroup, userController *controllers.UserCo
 	auth.POST("/signup", userController.CreateUser())
 	auth.POST("/login", userController.Login())
 
-	// v1.GET("/games", gc.GetGames())
-
-	// admin := protected.Use(middleware.AdminMiddleware())
-	// admin.GET("/games", gameController.GetGames())
 }
