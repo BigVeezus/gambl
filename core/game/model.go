@@ -9,63 +9,88 @@ import (
 )
 
 type GameStatus string
+type StakeStatus string
 
 const (
-	StatusCreated   GameStatus = "CREATED"
-	StatusOpen      GameStatus = "OPEN"
-	StatusInPlay    GameStatus = "IN_PLAY"
-	StatusVerifying GameStatus = "VERIFYING"
-	StatusComplete  GameStatus = "COMPLETE"
-	StatusDisputed  GameStatus = "DISPUTED"
+    StatusCreated   GameStatus = "CREATED"
+    StatusOpen      GameStatus = "OPEN"
+    StatusInPlay    GameStatus = "IN_PLAY"
+    StatusVerifying GameStatus = "VERIFYING"
+    StatusComplete  GameStatus = "COMPLETE"
+    StatusDisputed  GameStatus = "DISPUTED"
+    StakePending    StakeStatus = "PENDING"
+    StakeActive     StakeStatus = "ACTIVE"
+    StakeProcessingPayout StakeStatus = "PROCESSING_PAYOUT"
+    StakePaid       StakeStatus = "PAID"
+    StakeFailed     StakeStatus = "FAILED"
+    StakeRefunded   StakeStatus = "REFUNDED"
 )
 
 // At the top of model.go with other error definitions
 
 var (
-	// Existing errors
-	ErrInvalidAmount        = errors.New("stake amount must be greater than 0")
-	ErrInvalidPercentages   = errors.New("win and lose percentages must sum to 100")
-	ErrInvalidDeadline      = errors.New("deadline must be in the future")
-	ErrInvalidTeamSize      = errors.New("team size must be greater than 0")
-	ErrMissingCreator       = errors.New("creator ID is required")
-	ErrInvalidProofs        = errors.New("verification requirements are invalid")
-	ErrInvalidCurrency      = errors.New("unsupported currency")
-	ErrInvalidPayoutChannel = errors.New("invalid payout channel")
-
-	// Add service-level errors here
-	ErrGameNotFound     = errors.New("game not found")
-	ErrInvalidGameState = errors.New("invalid game state")
-	ErrUnauthorized     = errors.New("unauthorized action")
-	ErrStakeNotAllowed  = errors.New("staking not allowed")
-	ErrDuplicateStake   = errors.New("user has already staked")
+    // Existing errors
+    ErrInvalidAmount      = errors.New("stake amount must be greater than 0")
+    ErrInvalidPercentages = errors.New("win and lose percentages must sum to 100")
+    ErrInvalidDeadline    = errors.New("deadline must be in the future")
+    ErrInvalidTeamSize    = errors.New("team size must be greater than 0")
+    ErrMissingCreator     = errors.New("creator ID is required")
+    ErrInvalidProofs      = errors.New("verification requirements are invalid")
+    ErrInvalidCurrency    = errors.New("unsupported currency")
+    ErrInvalidPayoutChannel = errors.New("invalid payout channel")
+    ErrNoGameId             = errors.New("game ID is required")
+    ErrNoStakerId           = errors.New("staker ID is required")
+    
+    // Add service-level errors here
+    ErrGameNotFound     = errors.New("game not found")
+    ErrStakeNotFound     = errors.New("stake not found")
+    ErrInvalidGameState = errors.New("invalid game state")
+    ErrUnauthorized     = errors.New("unauthorized action")
+    ErrStakeNotAllowed  = errors.New("staking not allowed")
+    ErrDuplicateStake   = errors.New("user has already staked")
 )
 
 type Game struct {
-	ID                        primitive.ObjectID `bson:"_id"`
-	Creator_ID                string             `json:"creator_id" validate:"required"`
-	Gambl_Type                string             `json:"gambl_type" validate:"required"` // public, private
-	Title                     string             `json:"title" validate:"required"`
-	Description               string             `json:"description"`
-	Stakes                    []GameStake        `json:"stakes"`
-	Status                    GameStatus         `json:"status" validate:"required"`
+    ID            primitive.ObjectID `bson:"_id"`
+    Creator_ID     primitive.ObjectID      `json:"creator_id" validate:"required"`
+    Gambl_Type     string      `json:"gambl_type" validate:"required"` // public_event, custom_event, esports
+    Title         string      `json:"title" validate:"required"`
+    Description   string      `json:"description"`
+    Tags          []string    `json:"tags"`
+    Stakes        []GameStake `json:"stakes"`
+    Status                    GameStatus         `json:"status" validate:"required"`
 	Deadline                  time.Time          `json:"deadline" validate:"required"`
-	Team_Size                 int                `json:"team_size,omitempty"` // Optional, for team games
-	Created_At                time.Time          `json:"created_at"`
-	Updated_At                time.Time          `json:"updated_at"`
-	Verification_Requirements VerificationConfig `json:"verification_requirements"`
+	Team_Size      int         `json:"team_size,omitempty"` // Optional, for team games
+    Created_At     time.Time   `json:"created_at"`
+    Updated_At     time.Time   `json:"updated_at"`
+    Verification_Requirements VerificationConfig `json:"verification_requirements"`
+    MinimumStake     float64   `json:"minimum_stake" bson:"minimum_stake"`
+    CreatorPercentage float64   `json:"creator_percentage" bson:"creator_percentage"`
+    BaseCurrency     string    `json:"base_currency" bson:"base_currency"`
+    Teams            []Team    `json:"teams,omitempty" bson:"teams,omitempty"`
+}
+
+type Team struct {
+    ID          primitive.ObjectID   `json:"id" bson:"id"`
+    Name        string   `json:"name" bson:"name"`
+    Players     []string `json:"players" bson:"players"`
 }
 
 type GameStake struct {
-	ID            string    `json:"id" bson:"_id,omitempty"`
-	GameID        string    `json:"game_id"`
-	StakerID      string    `json:"staker_id"`
-	Currency      string    `json:"currency"`
-	PayoutChannel string    `json:"payout_channel"` // wallet/bank_account
-	Amount        float64   `json:"amount"`
-	WinPercent    float64   `json:"win_percent"`
-	LosePercent   float64   `json:"lose_percent"`
-	CreatedAt     time.Time `json:"created_at"`
-	Status        string    `json:"status"` // active, paid, refunded
+    ID            primitive.ObjectID    `json:"id" bson:"_id,omitempty"`
+    GameID        primitive.ObjectID    `json:"game_id"`
+    StakerID      primitive.ObjectID    `json:"staker_id"`
+    Currency      string    `json:"currency"`
+    PayoutChannel string    `json:"payout_channel"` // wallet/bank_account
+    WinPercent    float64   `json:"win_percent"`
+    LosePercent   float64   `json:"lose_percent"`
+    CreatedAt     time.Time `json:"created_at"`
+    TeamID        primitive.ObjectID    `json:"team_id,omitempty" bson:"team_id,omitempty"` // For team games
+    Amount        float64   `json:"amount" bson:"amount"`
+    EquivalentAmount float64 `json:"equivalent_amount" bson:"equivalent_amount"` // Amount in game's base currency
+    PayoutChannelID primitive.ObjectID `json:"payout_channel_id" bson:"payout_channel_id"`
+    Status        StakeStatus    `json:"status" bson:"status"`
+    UpdatedAt     time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 type GameResult struct {
@@ -126,24 +151,49 @@ var (
 )
 
 func (g *Game) Validate() error {
-	if g.Creator_ID == "" {
-		return ErrMissingCreator
-	}
+    if g.Creator_ID.String() == "" {
+        return ErrMissingCreator
+    }
 
 	if g.Deadline.Before(time.Now()) {
 		return ErrInvalidDeadline
 	}
 
-	if g.Team_Size < 0 {
-		return ErrInvalidTeamSize
-	}
+    if g.Team_Size < 0 {
+        return ErrInvalidTeamSize
+    }
 
-	// Validate all stakes
-	for _, stake := range g.Stakes {
-		if err := stake.Validate(); err != nil {
-			return err
-		}
-	}
+    if g.MinimumStake < 0 {
+        return errors.New("minimum stake cannot be negative")
+    }
+
+    if g.CreatorPercentage < 1 || g.CreatorPercentage > 15 {
+        return errors.New("creator percentage must be between 1 and 15")
+    }
+
+    if g.BaseCurrency == "" {
+        return errors.New("base currency is required")
+    }
+
+    // Validate all stakes
+    for _, stake := range g.Stakes {
+        if err := stake.Validate(); err != nil {
+            return err
+        }
+    }
+
+    if len(g.Teams) > 0 {
+        seen := make(map[string]bool)
+        for _, team := range g.Teams {
+            if team.ID.String() == "" || team.Name == "" {
+                return errors.New("team ID and name are required")
+            }
+            if seen[team.ID.String()] {
+                return errors.New("duplicate team ID")
+            }
+            seen[team.ID.String()] = true
+        }
+    }
 
 	return g.Verification_Requirements.Validate()
 }
@@ -161,9 +211,22 @@ func (s *GameStake) Validate() error {
 		return ErrInvalidCurrency
 	}
 
-	if !ValidPayoutChannels[s.PayoutChannel] {
-		return ErrInvalidPayoutChannel
-	}
+    if !ValidPayoutChannels[s.PayoutChannel] {
+        return ErrInvalidPayoutChannel
+    }
+
+    if s.PayoutChannelID.String() == "" {
+        return ErrInvalidPayoutChannel
+    }
+
+    if s.GameID.String() == "" {
+        return ErrNoGameId
+    }
+
+    if s.StakerID.String() == "" {
+        return ErrNoStakerId
+    }
+
 
 	return nil
 }

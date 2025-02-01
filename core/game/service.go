@@ -15,24 +15,24 @@ import (
 
 // GameService defines all game-related business operations
 type GameService interface {
-	// Game Management
-	CreateGame(ctx context.Context, game *Game) error
-	GetGame(ctx context.Context, id string) (*Game, error)
-	ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
-
-	// // Stake Operations
-	// PlaceStake(ctx context.Context, gameID string, stake *GameStake) error
-	// GetStake(ctx context.Context, gameID, stakeID string) (*GameStake, error)
-	// GetStakes(ctx context.Context, gameID, filters StakeFilters) ([]GameStake, error)
-
-	// // Game Flow
-	// StartGame(ctx context.Context, gameID string) error
-	// SubmitResult(ctx context.Context, gameID string, result *GameResult) error
-	// VerifyResult(ctx context.Context, gameID string, proof *VerificationProof) error
-
-	// // Dispute Handling
-	// RaiseDispute(ctx context.Context, gameID string, reason string) error
-	// ResolveDispute(ctx context.Context, gameID string, resolution string) error
+    // Game Management
+    CreateGame(ctx context.Context, game *Game) error
+    GetGame(ctx context.Context, id string) (*Game, error)
+    ListGames(ctx context.Context, filters GameFilters) ([]Game, error)
+    
+    // Stake Operations
+    // PlaceStake(ctx context.Context, gameID string, stake *GameStake) error
+    // GetStake(ctx context.Context, gameID, stakeID string) (*GameStake, error)
+    // GetStakes(ctx context.Context, gameID, filters StakeFilters) ([]GameStake, error)
+    
+    // Game Flow
+    // StartGame(ctx context.Context, gameID string) error
+    // SubmitResult(ctx context.Context, gameID string, result *GameResult) error
+    // VerifyResult(ctx context.Context, gameID string, proof *VerificationProof) error
+    
+    // // Dispute Handling
+    // RaiseDispute(ctx context.Context, gameID string, reason string) error
+    // ResolveDispute(ctx context.Context, gameID string, resolution string) error
 }
 
 // GameFilters for listing games

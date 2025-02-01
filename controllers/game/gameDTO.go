@@ -9,12 +9,14 @@ import (
 
 // Request DTOs
 type CreateGameRequest struct {
-	CreatorID   string    `json:"creatorID" binding:"required"`
-	GamblType   string    `json:"gambl_type" binding:"required,oneof=private public"`
-	Title       string    `json:"title" binding:"required"`
-	Description string    `json:"description" binding:"required"`
-	Deadline    time.Time `json:"deadline" binding:"required,gt=time.Now"`
-	TeamSize    int       `json:"team_size" binding:"omitempty,min=1"`
+	CreatorID   string   `json:"creatorID" binding:"required"`
+	GamblType   string   `json:"gamblType" binding:"required,oneof=public_event custom_event esports"`
+	Title       string   `json:"title" binding:"required"`
+	Tags        []string `json:"tags"`
+	Description string   `json:"description" binding:"required"`
+	// Stakes        []StakeRequest `json:"stakes" binding:"required,min=1"`
+	Deadline time.Time `json:"deadline" binding:"required,gt=time.Now"`
+	TeamSize int       `json:"team_size" binding:"omitempty,min=1"`
 	// VerificationRequirements VerificationConfigRequest `json:"verification_requirements" binding:"required"`
 }
 
@@ -22,6 +24,7 @@ type ListGamesRequest struct {
 	Status    []string  `form:"status"`
 	Type      string    `form:"type"`
 	CreatorID string    `form:"creator_id"`
+	Tags      []string  `form:"tags"`
 	FromDate  time.Time `form:"from_date" time_format:"2006-01-02T15:04:05Z07:00"`
 	ToDate    time.Time `form:"to_date" time_format:"2006-01-02T15:04:05Z07:00"`
 	Limit     int       `form:"limit,default=10"`
@@ -45,11 +48,12 @@ type VerificationConfigRequest struct {
 // Response DTOs
 type GameResponse struct {
 	ID                       primitive.ObjectID         `bson:"_id"`
-	CreatorID                string                     `json:"creator_id"`
+	CreatorID                primitive.ObjectID         `json:"creator_id"`
 	GamblType                string                     `json:"gambl_type"`
 	Title                    string                     `json:"title"`
 	Description              string                     `json:"description"`
 	Stakes                   []StakeResponse            `json:"stakes"`
+	Tags                     []string                   `json:"tags"`
 	Status                   game.GameStatus            `json:"status"`
 	Deadline                 time.Time                  `json:"deadline"`
 	TeamSize                 int                        `json:"team_size,omitempty"`
@@ -59,16 +63,16 @@ type GameResponse struct {
 }
 
 type StakeResponse struct {
-	ID            string    `json:"id"`
-	GameID        string    `json:"game_id"`
-	StakerID      string    `json:"staker_id"`
-	Currency      string    `json:"currency"`
-	PayoutChannel string    `json:"payout_channel"`
-	Amount        float64   `json:"amount"`
-	WinPercent    float64   `json:"win_percent"`
-	LosePercent   float64   `json:"lose_percent"`
-	CreatedAt     time.Time `json:"created_at"`
-	Status        string    `json:"status"`
+	ID            primitive.ObjectID `json:"id"`
+	GameID        primitive.ObjectID `json:"game_id"`
+	StakerID      primitive.ObjectID `json:"staker_id"`
+	Currency      string             `json:"currency"`
+	PayoutChannel string             `json:"payout_channel"`
+	Amount        float64            `json:"amount"`
+	WinPercent    float64            `json:"win_percent"`
+	LosePercent   float64            `json:"lose_percent"`
+	CreatedAt     time.Time          `json:"created_at"`
+	Status        game.StakeStatus   `json:"status"`
 }
 
 type VerificationConfigResponse struct {
@@ -79,13 +83,15 @@ type VerificationConfigResponse struct {
 
 // Conversion methods
 func (req *CreateGameRequest) ToGameModel(creatorID string) *game.Game {
+	creatorObjID, _ := primitive.ObjectIDFromHex(creatorID)
 	return &game.Game{
-		Creator_ID:  creatorID,
+		Creator_ID:  creatorObjID,
 		Gambl_Type:  req.GamblType,
 		Title:       req.Title,
 		Description: req.Description,
 		// Stakes:        convertStakeRequests(req.Stakes, ""),  // GameID will be set after creation
 		Status:     game.StatusCreated,
+		Tags:       req.Tags,
 		Deadline:   req.Deadline,
 		Team_Size:  req.TeamSize,
 		Created_At: time.Now(),
@@ -106,6 +112,7 @@ func NewGameResponse(g *game.Game) *GameResponse {
 		Title:       g.Title,
 		Description: g.Description,
 		Stakes:      convertToStakeResponses(g.Stakes),
+		Tags:        g.Tags,
 		Status:      g.Status,
 		Deadline:    g.Deadline,
 		TeamSize:    g.Team_Size,
@@ -122,9 +129,10 @@ func NewGameResponse(g *game.Game) *GameResponse {
 // Helper functions
 func convertStakeRequests(stakes []StakeRequest, gameID string) []game.GameStake {
 	result := make([]game.GameStake, len(stakes))
+	gameObjID, _ := primitive.ObjectIDFromHex(gameID)
 	for i, stake := range stakes {
 		result[i] = game.GameStake{
-			GameID:        gameID,
+			GameID:        gameObjID,
 			Currency:      stake.Currency,
 			PayoutChannel: stake.PayoutChannel,
 			Amount:        stake.Amount,
