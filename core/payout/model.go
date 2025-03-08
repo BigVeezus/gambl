@@ -29,6 +29,7 @@ type PayoutChannel struct {
     // Bank specific fields
     BankID      string    `json:"bank_id,omitempty" bson:"bank_id,omitempty"`
     AccountNo   string    `json:"account_no,omitempty" bson:"account_no,omitempty"`
+    AccountName string    `json:"account_name,omitempty" bson:"account_name,omitempty"`
     
     // Wallet specific fields
     WalletAddress string   `json:"wallet_address,omitempty" bson:"wallet_address,omitempty"`
@@ -37,6 +38,8 @@ type PayoutChannel struct {
     CreatedAt   time.Time `json:"created_at" bson:"created_at"`
     UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
     IsActive    bool      `json:"is_active" bson:"is_active"`
+    IsDefault   bool      `json:"is_default" bson:"is_default"`
+    Label       string    `json:"label,omitempty" bson:"label,omitempty"` // Optional friendly name
 }
 
 func (pc *PayoutChannel) Validate() error {

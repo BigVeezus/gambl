@@ -1,12 +1,14 @@
 package controllers
 
 import (
-    "log"
-    "net/http"
-    gameCore "gambl/core/game"
-    "github.com/gin-gonic/gin"
-    "github.com/go-playground/validator/v10"
-    "go.mongodb.org/mongo-driver/bson/primitive"
+	"fmt"
+	gameCore "gambl/core/game"
+	"log"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type StakeController struct {
@@ -21,34 +23,52 @@ func NewStakeController(ss gameCore.StakeService, l *log.Logger) *StakeControlle
     }
 }
 
+func (sc *StakeController) validateStakeRequest(c *gin.Context) (*PlaceStakeRequest, error) {
+    var req PlaceStakeRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        if validationErrors, ok := err.(validator.ValidationErrors); ok {
+            var errorMessages []string
+            for _, e := range validationErrors {
+                errorMessages = append(errorMessages, e.Error())
+            }
+            return nil, fmt.Errorf("validation failed: %v", errorMessages)
+        }
+        return nil, fmt.Errorf("invalid request")
+    }
+    return &req, nil
+}
+
+func (sc *StakeController) handleStakeError(c *gin.Context, err error) {
+    sc.logger.Printf("Failed to place stake: %v", err)
+    switch err {
+    case gameCore.ErrGameNotOpen:
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Game is not open for stakes"})
+    case gameCore.ErrInvalidPayoutChannel:
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payout channel"})
+    case gameCore.ErrBelowMinimumStake:
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Stake amount below minimum"})
+    case gameCore.ErrInvalidTeam:
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team selection"})
+    default:
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to place stake"})
+    }
+}
+
 // PlaceStake handles the creation of a new stake
 func (sc *StakeController) PlaceStake() gin.HandlerFunc {
     return func(c *gin.Context) {
-        var req PlaceStakeRequest
-        if err := c.ShouldBindJSON(&req); err != nil {
-            if validationErrors, ok := err.(validator.ValidationErrors); ok {
-                var errorMessages []string
-                for _, e := range validationErrors {
-                    errorMessages = append(errorMessages, e.Error())
-                }
-                c.JSON(http.StatusBadRequest, gin.H{
-                    "error":   "Validation failed",
-                    "details": errorMessages,
-                })
-                return
-            }
-            c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+        req, err := sc.validateStakeRequest(c)
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
             return
         }
 
-        // Get user ID from context (set by auth middleware)
         userID := c.GetString("uid")
         if userID == "" {
             c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
             return
         }
 
-        // Convert request to model
         stake, err := req.ToStakeModel(userID)
         if err != nil {
             sc.logger.Printf("Failed to convert request to model: %v", err)
@@ -56,21 +76,8 @@ func (sc *StakeController) PlaceStake() gin.HandlerFunc {
             return
         }
 
-        // Place stake
         if err := sc.stakeService.PlaceStake(c.Request.Context(), stake); err != nil {
-            sc.logger.Printf("Failed to place stake: %v", err)
-            switch err {
-            case gameCore.ErrGameNotOpen:
-                c.JSON(http.StatusBadRequest, gin.H{"error": "Game is not open for stakes"})
-            case gameCore.ErrInvalidPayoutChannel:
-                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payout channel"})
-            case gameCore.ErrBelowMinimumStake:
-                c.JSON(http.StatusBadRequest, gin.H{"error": "Stake amount below minimum"})
-            case gameCore.ErrInvalidTeam:
-                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team selection"})
-            default:
-                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to place stake"})
-            }
+            sc.handleStakeError(c, err)
             return
         }
 
@@ -95,7 +102,7 @@ func (sc *StakeController) GetStake() gin.HandlerFunc {
         }
 
         // Verify user has permission to view this stake
-        userID := c.GetString("uid")
+        userID, _ := primitive.ObjectIDFromHex(c.GetString("uid"))
         if stake.StakerID != userID {
             c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to view this stake"})
             return

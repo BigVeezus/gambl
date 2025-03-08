@@ -3,16 +3,19 @@ package main
 import (
 	"log"
 	"os"
-
+	"gambl/controllers/payment"
 	gameController "gambl/controllers/game"
 	paymentController "gambl/controllers/payment"
+	stakeController "gambl/controllers/stake"
 	userController "gambl/controllers/user"
 	"gambl/core/game"
 	"gambl/core/payment"
+	"gambl/core/payout" // New import
 	"gambl/core/user"
 	"gambl/database"
 	gameRoutes "gambl/routes/game"
 	paymentRoutes "gambl/routes/payment"
+	stakeRoutes "gambl/routes/stake"
 	userRoutes "gambl/routes/user"
 
 	providers "gambl/providers/payment"
@@ -46,16 +49,42 @@ func main() {
 		os.Getenv("FLW_PUB_KEY"),
 	)
 
+	// Initialize bank verification provider
+	bankVerificationProvider := providers.NewPaystackProvider(
+		os.Getenv("PAYSTACK_SECRET_KEY"),
+		os.Getenv("PAYSTACK_PUBLIC_KEY"),
+	)
+
+	// Map bank verification providers
+	bankProviders := map[string]payout.BankVerificationProvider{
+		"paystack": bankVerificationProvider,
+	}
+
 	// Initialize services with the respective repositories
 	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
 	gameService := game.NewGameService(database.OpenCollection(mongoClient, "games"))
-	paymentService := payment.NewPaymentService(database.OpenCollection(mongoClient, "payments"), paystackProvider,
-		flutterwaveProvider)
+	payoutChannelService := payout.NewPayoutChannelService(
+		database.OpenCollection(mongoClient, "payout_channels"), 
+		bankProviders, 
+		"paystack",
+	)
+	stakeService := game.NewStakeService(
+		database.OpenCollection(mongoClient, "games"), 
+		database.OpenCollection(mongoClient, "stakes"), 
+		database.OpenCollection(mongoClient, "payout_channels"),
+	)
+	paymentService := payment.NewPaymentService(
+		database.OpenCollection(mongoClient, "payments"), 
+		paystackProvider,
+		flutterwaveProvider,
+	)
 
 	// Initialize controllers with the respective services and logger
 	userController := userController.NewUserController(*userService, logger)
 	gameController := gameController.NewGameController(gameService, logger)
+	stakeController := stakeController.NewStakeController(stakeService, logger)
 	paymentController := paymentController.NewPaymentController(paymentService, logger)
+	payoutChannelController := controllers.NewPayoutChannelController(payoutChannelService, logger)
 
 	router := gin.New()
 
@@ -79,7 +108,9 @@ func main() {
 	// Protected routes under version 1
 	userRoutes.SetupUserRoutes(v1, userController)
 	gameRoutes.SetupGameRoutes(v1, gameController)
+	stakeRoutes.SetupStakeRoutes(v1, stakeController)
 	paymentRoutes.SetupPaymentsRoutes(v1, paymentController)
+	paymentRoutes.SetupPayoutChannelRoutes(v1, payoutChannelController) // Add new routes for payout channels
 
 	// API-2
 

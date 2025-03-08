@@ -38,7 +38,7 @@ type StakeResponse struct {
     Amount           float64           `json:"amount"`
     EquivalentAmount float64           `json:"equivalent_amount"`
     PayoutChannelID  primitive.ObjectID `json:"payout_channel_id"`
-    Status           string            `json:"status"`
+    Status           game.StakeStatus            `json:"status"`
     CreatedAt        time.Time         `json:"created_at"`
     UpdatedAt        time.Time         `json:"updated_at"`
 }
@@ -54,12 +54,22 @@ func (req *PlaceStakeRequest) ToStakeModel(stakerID string) (*game.GameStake, er
     if err != nil {
         return nil, err
     }
+    _stakerID, err := primitive.ObjectIDFromHex(stakerID)
+    if err != nil {
+        return nil, err
+    }
+
+    _teamID, err := primitive.ObjectIDFromHex(req.TeamID)
+    if err != nil {
+        return nil, err
+    }
+
 
     return &game.GameStake{
         ID:              primitive.NewObjectID(),
         GameID:          gameID,
-        StakerID:        stakerID,
-        TeamID:          req.TeamID,
+        StakerID:        _stakerID,
+        TeamID:          _teamID,
         Currency:        req.Currency,
         Amount:          req.Amount,
         PayoutChannelID: payoutChannelID,
@@ -69,11 +79,12 @@ func (req *PlaceStakeRequest) ToStakeModel(stakerID string) (*game.GameStake, er
 }
 
 func NewStakeResponse(s *game.GameStake) *StakeResponse {
+    
     return &StakeResponse{
         ID:               s.ID,
         GameID:          s.GameID,
-        StakerID:        s.StakerID,
-        TeamID:          s.TeamID,
+        StakerID:        s.StakerID.Hex(),
+        TeamID:          s.TeamID.Hex(),
         Currency:        s.Currency,
         Amount:          s.Amount,
         EquivalentAmount: s.EquivalentAmount,

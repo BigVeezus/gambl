@@ -17,6 +17,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	paymentCore "gambl/core/payment"
+	"gambl/core/payout"
 
 	providers "gambl/providers/payment"
 )
@@ -248,6 +249,349 @@ func (pc *PayoutController) FlutterwaveWebhook() gin.HandlerFunc {
 		c.JSON(http.StatusCreated, gin.H{
 			"success": true,
 			"body":    bson.M{},
+		})
+	}
+}
+
+type PayoutChannelController struct {
+	payoutService payout.PayoutChannelService
+	logger        *log.Logger
+}
+
+func NewPayoutChannelController(ps payout.PayoutChannelService, l *log.Logger) *PayoutChannelController {
+	return &PayoutChannelController{
+		payoutService: ps,
+		logger:        l,
+	}
+}
+
+// CreatePayoutChannel handles the creation of a new payout channel
+func (pc *PayoutChannelController) CreatePayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var req CreatePayoutChannelRequest
+		if err := c.BindJSON(&req); err != nil {
+			pc.logger.Printf("invalid request: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+
+		// Convert request to model
+		payoutChannel := req.ToPayoutChannelModel(userID)
+
+		// If it's a bank account, we need to verify it
+		if payoutChannel.ChannelType == payout.ChannelBank {
+			accountName, err := pc.payoutService.VerifyBankAccount(c.Request.Context(), payoutChannel.BankID, payoutChannel.AccountNo)
+			if err != nil {
+				pc.logger.Printf("bank verification failed: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "bank account verification failed", "details": err.Error()})
+				return
+			}
+			payoutChannel.AccountName = accountName
+		}
+
+		// Create the payout channel
+		err := pc.payoutService.CreatePayoutChannel(c.Request.Context(), payoutChannel)
+		if err != nil {
+			if err == payout.ErrPayoutChannelExists {
+				c.JSON(http.StatusConflict, gin.H{"error": "a payout channel already exists with this currency and type"})
+				return
+			}
+			pc.logger.Printf("failed to create payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create payout channel"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message": "payout channel created successfully",
+			"data": PayoutChannelResponse{
+				ID:          payoutChannel.ID.Hex(),
+				ChannelType: string(payoutChannel.ChannelType),
+				Currency:    payoutChannel.Currency,
+				IsDefault:   payoutChannel.IsDefault,
+				CreatedAt:   payoutChannel.CreatedAt,
+			},
+		})
+	}
+}
+
+// GetPayoutChannels handles retrieving all payout channels for a user
+func (pc *PayoutChannelController) GetPayoutChannels() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		channels, err := pc.payoutService.GetUserPayoutChannels(c.Request.Context(), userID)
+		if err != nil {
+			pc.logger.Printf("failed to get payout channels: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve payout channels"})
+			return
+		}
+
+		// Convert to response format
+		var response []PayoutChannelResponse
+		for _, channel := range channels {
+			response = append(response, PayoutChannelToResponse(&channel))
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": response,
+		})
+	}
+}
+
+// GetPayoutChannel handles retrieving a single payout channel
+func (pc *PayoutChannelController) GetPayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		channelID := c.Param("id")
+		if channelID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel ID is required"})
+			return
+		}
+
+		channel, err := pc.payoutService.GetPayoutChannel(c.Request.Context(), channelID)
+		if err != nil {
+			if err == payout.ErrPayoutChannelNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "payout channel not found"})
+				return
+			}
+			pc.logger.Printf("failed to get payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve payout channel"})
+			return
+		}
+
+		// Ensure the channel belongs to the authenticated user
+		if channel.UserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": PayoutChannelToResponse(channel),
+		})
+	}
+}
+
+// UpdatePayoutChannel handles updating a payout channel
+func (pc *PayoutChannelController) UpdatePayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		channelID := c.Param("id")
+		if channelID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel ID is required"})
+			return
+		}
+
+		// Get the existing channel first
+		channel, err := pc.payoutService.GetPayoutChannel(c.Request.Context(), channelID)
+		if err != nil {
+			if err == payout.ErrPayoutChannelNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "payout channel not found"})
+				return
+			}
+			pc.logger.Printf("failed to get payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve payout channel"})
+			return
+		}
+
+		// Ensure the channel belongs to the authenticated user
+		if channel.UserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		var req UpdatePayoutChannelRequest
+		if err := c.BindJSON(&req); err != nil {
+			pc.logger.Printf("invalid request: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+
+		// Build updates map
+		updates := req.ToUpdateMap()
+
+		// Apply updates
+		err = pc.payoutService.UpdatePayoutChannel(c.Request.Context(), channelID, updates)
+		if err != nil {
+			pc.logger.Printf("failed to update payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update payout channel"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "payout channel updated successfully",
+		})
+	}
+}
+
+// DeletePayoutChannel handles deleting a payout channel
+func (pc *PayoutChannelController) DeletePayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		channelID := c.Param("id")
+		if channelID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel ID is required"})
+			return
+		}
+
+		// Get the existing channel first
+		channel, err := pc.payoutService.GetPayoutChannel(c.Request.Context(), channelID)
+		if err != nil {
+			if err == payout.ErrPayoutChannelNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "payout channel not found"})
+				return
+			}
+			pc.logger.Printf("failed to get payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve payout channel"})
+			return
+		}
+
+		// Ensure the channel belongs to the authenticated user
+		if channel.UserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		// Delete the channel
+		err = pc.payoutService.DeletePayoutChannel(c.Request.Context(), channelID)
+		if err != nil {
+			pc.logger.Printf("failed to delete payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete payout channel"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "payout channel deleted successfully",
+		})
+	}
+}
+
+// SetDefaultPayoutChannel handles setting a payout channel as default
+func (pc *PayoutChannelController) SetDefaultPayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		channelID := c.Param("id")
+		if channelID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "channel ID is required"})
+			return
+		}
+
+		// Get the existing channel first
+		channel, err := pc.payoutService.GetPayoutChannel(c.Request.Context(), channelID)
+		if err != nil {
+			if err == payout.ErrPayoutChannelNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "payout channel not found"})
+				return
+			}
+			pc.logger.Printf("failed to get payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve payout channel"})
+			return
+		}
+
+		// Ensure the channel belongs to the authenticated user
+		if channel.UserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+			return
+		}
+
+		// Set as default
+		err = pc.payoutService.SetDefaultPayoutChannel(c.Request.Context(), userID, channelID)
+		if err != nil {
+			pc.logger.Printf("failed to set default payout channel: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set default payout channel"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": "payout channel set as default successfully",
+		})
+	}
+}
+
+// GetBanks handles retrieving the list of supported banks
+func (pc *PayoutChannelController) GetBanks() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Placeholder for now - implement based on your bank provider
+		c.JSON(http.StatusOK, gin.H{
+			"message": "This endpoint will return the list of supported banks",
+		})
+	}
+}
+
+// VerifyBankAccount handles verifying a bank account
+func (pc *PayoutChannelController) VerifyBankAccount() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req VerifyBankAccountRequest
+		if err := c.BindJSON(&req); err != nil {
+			pc.logger.Printf("invalid request: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+
+		accountName, err := pc.payoutService.VerifyBankAccount(c.Request.Context(), req.BankID, req.AccountNumber)
+		if err != nil {
+			pc.logger.Printf("bank verification failed: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bank account verification failed", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{
+				"account_name": accountName,
+				"bank_id":      req.BankID,
+				"account_no":   req.AccountNumber,
+			},
+		})
+	}
+}
+
+// HasPayoutChannel checks if a user has at least one payout channel
+func (pc *PayoutChannelController) HasPayoutChannel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("uid")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		hasChannel, err := pc.payoutService.HasValidPayoutChannel(c.Request.Context(), userID)
+		if err != nil {
+			pc.logger.Printf("failed to check payout channels: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check payout channels"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"has_payout_channel": hasChannel,
 		})
 	}
 }
