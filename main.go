@@ -92,7 +92,7 @@ func main() {
 	userController := userController.NewUserController(*userService, logger)
 	gameController := gameController.NewGameController(gameService, logger, aiService)
 	stakeController := stakeController.NewStakeController(stakeService, logger)
-	paymentController := paymentController.NewPaymentController(paymentService, logger)
+	paymentController := controllers.NewPaymentController(paymentService, logger)
 	payoutChannelController := controllers.NewPayoutChannelController(payoutChannelService, logger)
 
 	router := gin.New()

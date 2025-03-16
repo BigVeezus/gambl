@@ -54,7 +54,7 @@ type Game struct {
 	ID                        primitive.ObjectID `bson:"_id"`
 	Creator_ID                primitive.ObjectID `json:"creator_id" validate:"required"`
 	Gambl_Type                string             `json:"gambl_type" validate:"required"` // public_event, custom_event, esports
-	Title                     string             `json:"title" validate:"required"`
+	Statement                 string             `json:"statement" validate:"required"`
 	Description               string             `json:"description"`
 	Tags                      []string           `json:"tags"`
 	Stakes                    []GameStake        `json:"stakes"`
