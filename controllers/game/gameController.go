@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	aiCore "gambl/core/ai"
 	gameCore "gambl/core/game"
+	"time"
 
 	"fmt"
 	"log"
@@ -17,13 +19,15 @@ import (
 type GameController struct {
 	gameService gameCore.GameService
 	logger      *log.Logger
+	aiService   aiCore.AIService
 }
 
-func NewGameController(gs gameCore.GameService, l *log.Logger) *GameController {
+func NewGameController(gs gameCore.GameService, l *log.Logger, a aiCore.AIService) *GameController {
 	log.Printf("Init: game controller constructor")
 	return &GameController{
 		gameService: gs,
 		logger:      l,
+		aiService:   a,
 	}
 }
 
@@ -56,7 +60,64 @@ func (gc *GameController) CreateGame() gin.HandlerFunc {
 		}
 
 		creatorID := c.GetString("uid")
-		err := gc.gameService.CreateGame(c.Request.Context(), req.ToGameModel(creatorID))
+
+		gameModel := req.ToGameModel(creatorID)
+
+		// Validate wager using AI before creating it
+		validationResult, err := gc.aiService.ValidateWager(c.Request.Context(), &gameCore.Game{
+			Statement:   gameModel.Statement,
+			Creator_ID:  gameModel.Creator_ID,
+			Deadline:    gameModel.Deadline,
+			Description: gameModel.Description,
+			Created_At:  time.Now(),
+		})
+
+		if err != nil {
+			gc.logger.Printf("AI validation failed, error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to validate game",
+				"message": "Our system couldn't determine if this wager can be resolved. Please try again."})
+			return
+		}
+
+		// Handle invalid wagers based on AI validation
+		if !validationResult.IsValid {
+			gc.logger.Printf("Invalid wager detected: %s", validationResult.Reasoning)
+
+			// If AI suggested clarification questions, include them in the response
+			var suggestions []string
+			if validationResult.ClarificationNeeded && len(validationResult.ClarificationQuestions) > 0 {
+				suggestions = validationResult.ClarificationQuestions
+			}
+
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":       "Invalid wager",
+				"reasoning":   validationResult.Reasoning,
+				"suggestions": suggestions,
+			})
+			return
+		}
+
+		// If AI suggested a better end date, you might want to use it
+		if validationResult.SuggestedEndDate != "" {
+			suggestedDate, err := time.Parse("2006-01-02", validationResult.SuggestedEndDate)
+			if err == nil && suggestedDate.After(gameModel.Deadline) {
+				// Store the AI suggestion to present to the user
+				// You could add this to the response or update the model
+				gameModel.Deadline = suggestedDate
+			}
+		}
+
+		// Include validation info in the game model
+		gameModel.Is_Valid = validationResult.IsValid
+		gameModel.ValidationReasoning = validationResult.Reasoning
+
+		// Store suggested resolution sources if provided
+		if len(validationResult.SuggestedResolutionSources) > 0 {
+			gameModel.ResolutionSources = strings.Join(validationResult.SuggestedResolutionSources, ", ")
+		}
+
+		err = gc.gameService.CreateGame(c.Request.Context(), gameModel)
 		if err != nil {
 			gc.logger.Printf("failed to create game, error: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to create game", "message": err.Error()})

@@ -1,13 +1,11 @@
 package main
 
 import (
-	"log"
-	"os"
-	"gambl/controllers/payment"
 	gameController "gambl/controllers/game"
-	paymentController "gambl/controllers/payment"
+	controllers "gambl/controllers/payment"
 	stakeController "gambl/controllers/stake"
 	userController "gambl/controllers/user"
+	"gambl/core/ai"
 	"gambl/core/game"
 	"gambl/core/payment"
 	"gambl/core/payout" // New import
@@ -17,6 +15,8 @@ import (
 	paymentRoutes "gambl/routes/payment"
 	stakeRoutes "gambl/routes/stake"
 	userRoutes "gambl/routes/user"
+	"log"
+	"os"
 
 	providers "gambl/providers/payment"
 
@@ -60,28 +60,37 @@ func main() {
 		"paystack": bankVerificationProvider,
 	}
 
+	// Get OpenAI API key from environment
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY environment variable is required")
+	}
+
+	// Initialize AI controller
+	aiService := ai.NewAIService(apiKey)
+
 	// Initialize services with the respective repositories
 	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
 	gameService := game.NewGameService(database.OpenCollection(mongoClient, "games"))
 	payoutChannelService := payout.NewPayoutChannelService(
-		database.OpenCollection(mongoClient, "payout_channels"), 
-		bankProviders, 
+		database.OpenCollection(mongoClient, "payout_channels"),
+		bankProviders,
 		"paystack",
 	)
 	stakeService := game.NewStakeService(
-		database.OpenCollection(mongoClient, "games"), 
-		database.OpenCollection(mongoClient, "stakes"), 
+		database.OpenCollection(mongoClient, "games"),
+		database.OpenCollection(mongoClient, "stakes"),
 		database.OpenCollection(mongoClient, "payout_channels"),
 	)
 	paymentService := payment.NewPaymentService(
-		database.OpenCollection(mongoClient, "payments"), 
+		database.OpenCollection(mongoClient, "payments"),
 		paystackProvider,
 		flutterwaveProvider,
 	)
 
 	// Initialize controllers with the respective services and logger
 	userController := userController.NewUserController(*userService, logger)
-	gameController := gameController.NewGameController(gameService, logger)
+	gameController := gameController.NewGameController(gameService, logger, aiService)
 	stakeController := stakeController.NewStakeController(stakeService, logger)
 	paymentController := paymentController.NewPaymentController(paymentService, logger)
 	payoutChannelController := controllers.NewPayoutChannelController(payoutChannelService, logger)

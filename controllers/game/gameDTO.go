@@ -11,7 +11,7 @@ import (
 type CreateGameRequest struct {
 	CreatorID   string   `json:"creatorID" binding:"required"`
 	GamblType   string   `json:"gamblType" binding:"required,oneof=public_event custom_event esports"`
-	Title       string   `json:"title" binding:"required"`
+	Statement   string   `json:"statement" binding:"required"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description" binding:"required"`
 	// Stakes        []StakeRequest `json:"stakes" binding:"required,min=1"`
@@ -50,7 +50,7 @@ type GameResponse struct {
 	ID                       primitive.ObjectID         `bson:"_id"`
 	CreatorID                primitive.ObjectID         `json:"creator_id"`
 	GamblType                string                     `json:"gambl_type"`
-	Title                    string                     `json:"title"`
+	Statement                string                     `json:"statement"`
 	Description              string                     `json:"description"`
 	Stakes                   []StakeResponse            `json:"stakes"`
 	Tags                     []string                   `json:"tags"`
@@ -87,7 +87,7 @@ func (req *CreateGameRequest) ToGameModel(creatorID string) *game.Game {
 	return &game.Game{
 		Creator_ID:  creatorObjID,
 		Gambl_Type:  req.GamblType,
-		Title:       req.Title,
+		Statement:   req.Statement,
 		Description: req.Description,
 		// Stakes:        convertStakeRequests(req.Stakes, ""),  // GameID will be set after creation
 		Status:     game.StatusCreated,
@@ -109,7 +109,7 @@ func NewGameResponse(g *game.Game) *GameResponse {
 		ID:          g.ID,
 		CreatorID:   g.Creator_ID,
 		GamblType:   g.Gambl_Type,
-		Title:       g.Title,
+		Statement:   g.Statement,
 		Description: g.Description,
 		Stakes:      convertToStakeResponses(g.Stakes),
 		Tags:        g.Tags,
@@ -136,10 +136,10 @@ func convertStakeRequests(stakes []StakeRequest, gameID string) []game.GameStake
 			Currency:      stake.Currency,
 			PayoutChannel: stake.PayoutChannel,
 			Amount:        stake.Amount,
-			WinPercent:    stake.WinPercent,
-			LosePercent:   stake.LosePercent,
-			CreatedAt:     time.Now(),
-			Status:        "active",
+			// WinPercent:    stake.WinPercent,
+			// LosePercent:   stake.LosePercent,
+			CreatedAt: time.Now(),
+			Status:    "active",
 		}
 	}
 	return result
@@ -155,10 +155,10 @@ func convertToStakeResponses(stakes []game.GameStake) []StakeResponse {
 			Currency:      stake.Currency,
 			PayoutChannel: stake.PayoutChannel,
 			Amount:        stake.Amount,
-			WinPercent:    stake.WinPercent,
-			LosePercent:   stake.LosePercent,
-			CreatedAt:     stake.CreatedAt,
-			Status:        stake.Status,
+			// WinPercent:    stake.WinPercent,
+			// LosePercent:   stake.LosePercent,
+			CreatedAt: stake.CreatedAt,
+			Status:    stake.Status,
 		}
 	}
 	return result
