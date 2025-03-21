@@ -26,6 +26,7 @@ func NewStakeController(ss gameCore.StakeService, l *log.Logger) *StakeControlle
 func (sc *StakeController) validateStakeRequest(c *gin.Context) (*PlaceStakeRequest, error) {
     var req PlaceStakeRequest
     if err := c.ShouldBindJSON(&req); err != nil {
+        sc.logger.Printf("invalid request, error: %v", err)
         if validationErrors, ok := err.(validator.ValidationErrors); ok {
             var errorMessages []string
             for _, e := range validationErrors {

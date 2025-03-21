@@ -9,6 +9,7 @@ import (
 	"gambl/core/game"
 	"gambl/core/payment"
 	"gambl/core/payout" // New import
+	cryptoCore "gambl/core/crypto"
 	"gambl/core/user"
 	"gambl/database"
 	gameRoutes "gambl/routes/game"
@@ -69,6 +70,55 @@ func main() {
 	// Initialize AI controller
 	aiService := ai.NewAIService(apiKey)
 
+	// Initialize crypto encryption helper
+	aesEncrypter := cryptoCore.NewAESEncrypter(os.Getenv("CRYPTO_SECRET_KEY"))
+
+	// Initialize blockchain adapters
+	// EVM adapter (Ethereum, BSC, etc.)
+	evmAdapter, err := cryptoCore.NewEVMAdapter(
+		os.Getenv("ETH_RPC_URL"), 
+		1, // Ethereum mainnet chain ID
+	)
+	if err != nil {
+		print("Error: ", err)
+		logger.Printf("Warning: Failed to initialize EVM adapter: %v", err)
+		// Continue without this adapter, or use a fallback
+	}
+
+	// Tron adapter
+	tronAdapter := cryptoCore.NewTronAdapter(
+		os.Getenv("TRON_API_URL"),
+		os.Getenv("TRON_API_KEY"),
+		false, // mainnet, not testnet
+	)
+
+	// Solana adapter
+	solanaAdapter := cryptoCore.NewSolanaAdapter(
+		os.Getenv("SOLANA_RPC_URL"),
+	)
+
+	// Create map of blockchain adapters
+	blockchainAdapters := make(map[cryptoCore.ChainType]cryptoCore.BlockchainAdapter)
+
+	// Add available adapters to the map
+	if evmAdapter != nil {
+		blockchainAdapters[cryptoCore.ChainEVM] = evmAdapter
+	}
+	if tronAdapter != nil {
+		blockchainAdapters[cryptoCore.ChainTron] = tronAdapter
+	}
+	if solanaAdapter != nil {
+		blockchainAdapters[cryptoCore.ChainSolana] = solanaAdapter
+	}
+
+	// Initialize the crypto service
+	cryptoService := cryptoCore.NewCryptoService(
+		database.OpenCollection(mongoClient, "payout_channels"),
+		blockchainAdapters,
+		aesEncrypter,
+		logger,
+	)
+
 	// Initialize services with the respective repositories
 	userService := user.NewUserService(database.OpenCollection(mongoClient, "users"))
 	gameService := game.NewGameService(database.OpenCollection(mongoClient, "games"))
@@ -76,6 +126,7 @@ func main() {
 		database.OpenCollection(mongoClient, "payout_channels"),
 		bankProviders,
 		"paystack",
+		cryptoService,
 	)
 	stakeService := game.NewStakeService(
 		database.OpenCollection(mongoClient, "games"),
@@ -117,7 +168,7 @@ func main() {
 	// Protected routes under version 1
 	userRoutes.SetupUserRoutes(v1, userController)
 	gameRoutes.SetupGameRoutes(v1, gameController)
-	stakeRoutes.SetupStakeRoutes(v1, stakeController)
+	stakeRoutes.SetupStakeRoutes(v1, stakeController, payoutChannelService)
 	paymentRoutes.SetupPaymentsRoutes(v1, paymentController)
 	paymentRoutes.SetupPayoutChannelRoutes(v1, payoutChannelController) // Add new routes for payout channels
 

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"gambl/core/crypto"
 	payment "gambl/core/payment"
 	"gambl/core/payout"
 	"time"
@@ -13,17 +14,17 @@ type CreatePaymentLinkDTO struct {
 }
 
 type CreatePayoutChannelRequest struct {
-	ChannelType   string  `json:"channel_type" binding:"required,oneof=bank_account wallet"`
+	ChannelType   string  `json:"channelType" binding:"required,oneof=bank_account wallet"`
 	Currency      string  `json:"currency" binding:"required"`
 	Label         string  `json:"label,omitempty"`
 	
 	// Bank specific fields
-	BankID        string  `json:"bank_id,omitempty"`
-	AccountNumber string  `json:"account_number,omitempty"`
+	BankID        string  `json:"bankId,omitempty"`
+	AccountNumber string  `json:"accountNumber,omitempty"`
 	
 	// Wallet specific fields
-	WalletAddress string  `json:"wallet_address,omitempty"`
-	ChainID       string  `json:"chain_id,omitempty"`
+	WalletAddress string  `json:"walletAddress,omitempty"`
+	ChainID       crypto.ChainType  `json:"chainId,omitempty"`
 }
 
 type UpdatePayoutChannelRequest struct {
@@ -35,7 +36,7 @@ type UpdatePayoutChannelRequest struct {
 	
 	// Wallet specific fields - can update wallet address if needed
 	WalletAddress string  `json:"wallet_address,omitempty"`
-	ChainID       string  `json:"chain_id,omitempty"`
+	ChainID       crypto.ChainType  `json:"chain_id,omitempty"`
 }
 
 type VerifyBankAccountRequest struct {
@@ -60,7 +61,7 @@ type PayoutChannelResponse struct {
 	
 	// Wallet specific fields
 	WalletAddress string   `json:"wallet_address,omitempty"`
-	ChainID       string   `json:"chain_id,omitempty"`
+	ChainID       crypto.ChainType   `json:"chain_id,omitempty"`
 }
 
 // Conversion methods

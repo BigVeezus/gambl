@@ -235,10 +235,6 @@ func (s *GameStake) Validate() error {
 		return ErrInvalidCurrency
 	}
 
-	if !ValidPayoutChannels[s.PayoutChannel] {
-		return ErrInvalidPayoutChannel
-	}
-
 	if s.PayoutChannelID.String() == "" {
 		return ErrInvalidPayoutChannel
 	}

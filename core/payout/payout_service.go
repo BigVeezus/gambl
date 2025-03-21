@@ -10,6 +10,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+
+	//import crypto service
+	cryptoService "gambl/core/crypto"
 )
 
 // Common errors
@@ -53,15 +56,17 @@ type Bank struct {
 type payoutChannelService struct {
 	collection      *mongo.Collection
 	bankProviders   map[string]BankVerificationProvider // Different providers for different regions/countries
-	defaultProvider string                              // Default provider key
+	defaultProvider string
+	cryptoService   cryptoService.CryptoService // Default provider key
 }
 
 // NewPayoutChannelService creates a new payout channel service
-func NewPayoutChannelService(collection *mongo.Collection, providers map[string]BankVerificationProvider, defaultProvider string) PayoutChannelService {
+func NewPayoutChannelService(collection *mongo.Collection, providers map[string]BankVerificationProvider, defaultProvider string, cryptoService cryptoService.CryptoService) PayoutChannelService {
 	return &payoutChannelService{
 		collection:      collection,
 		bankProviders:   providers,
 		defaultProvider: defaultProvider,
+		cryptoService:   cryptoService,
 	}
 }
 
@@ -77,7 +82,7 @@ func (s *payoutChannelService) CreatePayoutChannel(ctx context.Context, channel 
 	if err != nil && err != ErrPayoutChannelNotFound {
 		return err
 	}
-	
+
 	if existing != nil {
 		return ErrPayoutChannelExists
 	}
@@ -90,11 +95,22 @@ func (s *payoutChannelService) CreatePayoutChannel(ctx context.Context, channel 
 			if err != nil {
 				return err
 			}
-			
+
 			// You could store the account name if needed
 			// channel.AccountName = accountName
 			log.Printf("Verified bank account: %s", accountName)
 		}
+	} else if channel.ChannelType == ChannelWallet {
+		//validate wallet address
+		isValid, err := s.cryptoService.ValidateAddress(ctx, channel.WalletAddress, channel.ChainID)
+		if err != nil {
+			return err
+		}
+		if !isValid {
+			return errors.New("invalid wallet address")
+		}
+		log.Printf("Verified wallet address: %s", channel.WalletAddress)
+
 	}
 
 	// Set metadata
@@ -108,20 +124,20 @@ func (s *payoutChannelService) CreatePayoutChannel(ctx context.Context, channel 
 	if err != nil {
 		return err
 	}
-	
+
 	isDefault := count == 0
-	
+
 	// Insert the channel
 	_, err = s.collection.InsertOne(ctx, channel)
 	if err != nil {
 		return err
 	}
-	
+
 	// If this is the first channel, make it default
 	if isDefault {
 		return s.SetDefaultPayoutChannel(ctx, channel.UserID, channel.ID.Hex())
 	}
-	
+
 	return nil
 }
 
@@ -254,7 +270,7 @@ func (s *payoutChannelService) GetDefaultPayoutChannel(ctx context.Context, user
 		"is_default": true,
 		"is_active":  true,
 	}).Decode(&channel)
-	
+
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrPayoutChannelNotFound
@@ -275,11 +291,11 @@ func (s *payoutChannelService) GetUserPayoutChannelByCurrency(ctx context.Contex
 		"is_default": true,
 		"is_active":  true,
 	}).Decode(&channel)
-	
+
 	if err == nil {
 		return &channel, nil
 	}
-	
+
 	// If no default found, just get any channel with this currency
 	if err == mongo.ErrNoDocuments {
 		err = s.collection.FindOne(ctx, bson.M{
@@ -287,17 +303,17 @@ func (s *payoutChannelService) GetUserPayoutChannelByCurrency(ctx context.Contex
 			"currency":  currency,
 			"is_active": true,
 		}).Decode(&channel)
-		
+
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				return nil, ErrPayoutChannelNotFound
 			}
 			return nil, err
 		}
-		
+
 		return &channel, nil
 	}
-	
+
 	return nil, err
 }
 
@@ -307,11 +323,11 @@ func (s *payoutChannelService) HasValidPayoutChannel(ctx context.Context, userID
 		"user_id":   userID,
 		"is_active": true,
 	})
-	
+
 	if err != nil {
 		return false, err
 	}
-	
+
 	return count > 0, nil
 }
 
@@ -324,13 +340,13 @@ func (s *payoutChannelService) getUserPayoutChannelByTypeAndCurrency(ctx context
 		"currency":     currency,
 		"is_active":    true,
 	}).Decode(&channel)
-	
+
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrPayoutChannelNotFound
 		}
 		return nil, err
 	}
-	
+
 	return &channel, nil
 }

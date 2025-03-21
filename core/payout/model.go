@@ -5,6 +5,7 @@ import (
     "errors"
     "time"
     "go.mongodb.org/mongo-driver/bson/primitive"
+    "gambl/core/crypto"
 )
 
 var (
@@ -33,7 +34,7 @@ type PayoutChannel struct {
     
     // Wallet specific fields
     WalletAddress string   `json:"wallet_address,omitempty" bson:"wallet_address,omitempty"`
-    ChainID      string    `json:"chain_id,omitempty" bson:"chain_id,omitempty"`
+    ChainID      crypto.ChainType    `json:"chain_id,omitempty" bson:"chain_id,omitempty"`
     
     CreatedAt   time.Time `json:"created_at" bson:"created_at"`
     UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
@@ -44,6 +45,7 @@ type PayoutChannel struct {
 
 func (pc *PayoutChannel) Validate() error {
     if pc.UserID == "" {
+    
         return errors.New("user ID is required")
     }
 
