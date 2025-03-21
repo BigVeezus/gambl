@@ -8,11 +8,11 @@ import (
 
 // Request DTOs
 type PlaceStakeRequest struct {
-    GameID          string  `json:"game_id" binding:"required"`
-    TeamID          string  `json:"team_id,omitempty"`
+    GameID          string  `json:"gameId" binding:"required"`
+    TeamID          string  `json:"teamId,omitempty"`
     Currency        string  `json:"currency" binding:"required"`
     Amount          float64 `json:"amount" binding:"required,gt=0"`
-    PayoutChannelID string  `json:"payout_channel_id" binding:"required"`
+    PayoutChannelID string  `json:"payoutChannelId" binding:"required"`
 }
 
 type ListStakesRequest struct {

@@ -46,7 +46,7 @@ func (s *stakeService) PlaceStake(ctx context.Context, stake *GameStake) error {
 
     // 2. Get and validate game
     var game Game
-    err := s.gameCollection.FindOne(ctx, bson.M{"_id": stake.GameID}).Decode(&game)
+    err := s.gameCollection.FindOne(ctx, bson.M{"_id": stake.GameID.String()}).Decode(&game)
     if err != nil {
         return err
     }
@@ -72,8 +72,8 @@ func (s *stakeService) PlaceStake(ctx context.Context, stake *GameStake) error {
     // 4. Verify payout channel exists and is active
     var channel payout.PayoutChannel
     err = s.payoutChannelCollection.FindOne(ctx, bson.M{
-        "_id": stake.PayoutChannelID,
-        "user_id": stake.StakerID,
+        "_id": stake.PayoutChannelID.String(),
+        "user_id": stake.StakerID.String(),
         "is_active": true,
     }).Decode(&channel)
     if err != nil {
